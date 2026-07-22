@@ -966,10 +966,16 @@
       '<button class="btn btn-secondary" id="exportBtn">📦 Yedek Al</button>'+
       '<button class="btn btn-secondary" id="importBtn">📥 Yedek Yükle</button>'+
       '</div>'+
-      '<p class="backup-note">Fotoğraflar sadece bu telefonda saklanır. Arada bir yedek alıp dosyayı iCloud / Dosyalar\'a kaydetmen güvenli olur. 💛</p>';
+      '<div class="backup-row" style="margin-top:0;">'+
+      '<button class="btn btn-secondary" id="photosExportBtn">📤 Fotoğrafları Telefona Kaydet</button>'+
+      '</div>'+
+      '<p class="backup-note">📦 Yedek Al: her şeyi (fotoğraflar + tekrar programı) tek dosyaya indirir — Dosyalar, iCloud ya da <b>Google Drive</b>\'a kaydet. Geri yükleme sadece bu dosyayla olur.<br>'+
+      '📤 Fotoğrafları Telefona Kaydet: soru fotoğraflarını 30\'arlı gruplarla Fotoğraflar\'a kaydeder (açılan ekranda <b>"Görüntüleri Kaydet"</b> seç). <b>Google Fotoğraflar</b> yedeklemen açıksa oradan buluta da yüklenir — ama bu sadece görsel kopyasıdır, tekrar programını içermez. 💛</p>';
     contentEl.appendChild(wrap);
     document.getElementById("exportBtn").addEventListener("click", exportBackup);
     document.getElementById("importBtn").addEventListener("click", ()=> importInput.click());
+    document.getElementById("photosExportBtn").addEventListener("click", photosExportClick);
+    updatePhotosBtnLabel();
   }
 
   function escapeHtml(s){
@@ -1565,6 +1571,89 @@
     if(f) importBackup(f);
     importInput.value = "";
   });
+
+  // ---------- fotoğrafları toplu olarak Fotoğraflar uygulamasına aktar ----------
+  const PHOTO_BATCH = 30;
+  let photoExportPos = 0;
+  try{ photoExportPos = parseInt(localStorage.getItem("hd_photoExportPos"), 10) || 0; }catch(e){}
+  let preparedFiles = null, preparedCount = 0;
+
+  function setPhotoExportPos(v){
+    photoExportPos = v;
+    try{ localStorage.setItem("hd_photoExportPos", String(v)); }catch(e){}
+  }
+  function dataUrlToBlob(dataUrl){
+    const i = dataUrl.indexOf(",");
+    const meta = dataUrl.slice(0, i);
+    const b64 = dataUrl.slice(i + 1);
+    const mime = (meta.match(/data:([^;]+)/) || [])[1] || "image/jpeg";
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for(let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+    return new Blob([arr], {type: mime});
+  }
+  function updatePhotosBtnLabel(){
+    const btn = document.getElementById("photosExportBtn");
+    if(!btn) return;
+    const left = INDEX.length - photoExportPos;
+    if(preparedFiles) btn.textContent = "📤 Kaydet — " + preparedFiles.length + " fotoğraf hazır";
+    else if(photoExportPos > 0 && left > 0) btn.textContent = "📤 Devam et — kalan " + left + " fotoğraf";
+    else btn.textContent = "📤 Fotoğrafları Telefona Kaydet";
+    btn.disabled = INDEX.length === 0;
+  }
+  async function photosExportClick(){
+    const btn = document.getElementById("photosExportBtn");
+    if(!(navigator.share && navigator.canShare && typeof File === "function")){
+      showToast("Bu iOS sürümü toplu paylaşımı desteklemiyor");
+      return;
+    }
+    if(photoExportPos >= INDEX.length) setPhotoExportPos(0);
+    // hazırda bekleyen grup varsa doğrudan paylaş (kullanıcı dokunuşuyla)
+    if(preparedFiles){
+      try{
+        await navigator.share({files: preparedFiles});
+        setPhotoExportPos(photoExportPos + preparedCount);
+        preparedFiles = null; preparedCount = 0;
+        showToast(photoExportPos >= INDEX.length ? "Hepsi aktarıldı 🎉" : "Kaydedildi — kalanlar için tekrar bas");
+        if(photoExportPos >= INDEX.length) setPhotoExportPos(0);
+      }catch(err){ /* vazgeçti: grup hazır kalsın */ }
+      updatePhotosBtnLabel();
+      return;
+    }
+    // grubu hazırla
+    if(btn){ btn.disabled = true; btn.textContent = "Hazırlanıyor..."; }
+    const entries = INDEX.slice(photoExportPos, photoExportPos + PHOTO_BATCH);
+    const files = [];
+    for(const e of entries){
+      const p = await loadPhoto(e.id);
+      if(!p) continue;
+      const name = "hata-" + (e.subject || "soru") + "-" + e.dateCaptured + "-" + e.id.slice(-4) + ".jpg";
+      files.push(new File([dataUrlToBlob(p)], name, {type: "image/jpeg"}));
+    }
+    if(btn) btn.disabled = false;
+    if(!files.length){
+      setPhotoExportPos(photoExportPos + entries.length);
+      updatePhotosBtnLabel();
+      return;
+    }
+    if(!navigator.canShare({files: files})){
+      showToast("Bu cihaz dosya paylaşımını desteklemiyor");
+      updatePhotosBtnLabel();
+      return;
+    }
+    preparedFiles = files; preparedCount = entries.length;
+    try{
+      await navigator.share({files: files});
+      setPhotoExportPos(photoExportPos + preparedCount);
+      preparedFiles = null; preparedCount = 0;
+      showToast(photoExportPos >= INDEX.length ? "Hepsi aktarıldı 🎉" : "Kaydedildi — kalanlar için tekrar bas");
+      if(photoExportPos >= INDEX.length) setPhotoExportPos(0);
+    }catch(err){
+      // iOS bazen hazırlık uzun sürünce dokunuş saymaz; grup hazır, ikinci dokunuş anında paylaşır
+      if(!(err && err.name === "AbortError")) showToast("Tekrar bas — fotoğraflar hazır");
+    }
+    updatePhotosBtnLabel();
+  }
 
   // ---------- misc wiring ----------
   document.getElementById("fabAdd").addEventListener("click", openAddModal);
