@@ -86,6 +86,11 @@
   .empty p{font-size:0.92rem; line-height:1.5; max-width:320px; margin:0 auto;}
   .empty .next-due{margin-top:14px; font-family:'IBM Plex Mono',monospace; font-size:0.78rem; color:var(--amber);}
 
+  /* ---- Subject filter ---- */
+  .filter-row{display:flex; gap:7px; overflow-x:auto; margin:14px 2px 2px; padding-bottom:4px; -webkit-overflow-scrolling:touch;}
+  .filter-row .chip{flex-shrink:0;}
+  .filter-row .chip.selected{background:var(--amber); border-color:var(--amber); color:var(--amber-ink);}
+
   /* ---- Section label ---- */
   .section-label{
     font-family:'IBM Plex Mono',monospace; font-size:0.72rem; letter-spacing:0.09em;
@@ -563,6 +568,7 @@
   // ---------- state ----------
   let INDEX = [];
   let currentView = "today";
+  let activeSubject = ""; // "" = hepsi, "__none__" = ders atanmamışlar
   let pendingImage = null;
   let pendingSource = null;
   let pendingSubject = "";
@@ -626,6 +632,55 @@
   const intervalLabel = {d1:"TEKRAR 1 · 1 GÜN", d7:"TEKRAR 2 · 7 GÜN", d30:"TEKRAR 3 · 30 GÜN"};
   const intervalShort = {d1:"1G", d7:"7G", d30:"30G"};
 
+  // ---------- ders filtresi ----------
+  function matchesFilter(e){
+    if(!activeSubject) return true;
+    if(activeSubject === "__none__") return !e.subject;
+    return e.subject === activeSubject;
+  }
+  function subjectFilterHtml(){
+    const counts = {};
+    INDEX.forEach(function(e){ const s = e.subject || ""; counts[s] = (counts[s]||0)+1; });
+    const names = Object.keys(counts).filter(function(s){ return s !== ""; }).sort(function(a,b){ return a.localeCompare(b,"tr"); });
+    if(!names.length) return ""; // hiç ders atanmamışsa filtre satırı gösterme
+    function chipHtml(val, label, n){
+      const sel = activeSubject === val ? " selected" : "";
+      return '<button class="chip'+sel+'" data-subj="'+escapeHtml(val)+'">'+escapeHtml(label)+' · '+n+'</button>';
+    }
+    let html = '<div class="filter-row" id="filterRow">';
+    html += chipHtml("", "Hepsi", INDEX.length);
+    names.forEach(function(s){ html += chipHtml(s, s, counts[s]); });
+    if(counts[""]) html += chipHtml("__none__", "Diğer", counts[""]);
+    html += '</div>';
+    return html;
+  }
+  function wireFilterRow(){
+    const row = document.getElementById("filterRow");
+    if(!row) return;
+    row.addEventListener("click", function(e){
+      const c = e.target.closest(".chip");
+      if(!c) return;
+      activeSubject = c.dataset.subj || "";
+      render();
+    });
+  }
+  // eski kayıtlar: ders bilgisi notun başına yazılıyordu, ayrı alana taşı
+  function migrateSubjects(){
+    let changed = false;
+    const KNOWN = ["Matematik","Fizik","Kimya","Biyoloji","Türkçe","Sosyal"];
+    INDEX.forEach(function(e){
+      if(e.subject !== undefined) return;
+      e.subject = "";
+      const n = e.note || "";
+      for(const s of KNOWN){
+        if(n === s){ e.subject = s; e.note = ""; break; }
+        if(n.indexOf(s + " - ") === 0){ e.subject = s; e.note = n.slice(s.length + 3); break; }
+      }
+      changed = true;
+    });
+    return changed;
+  }
+
   function updateCounts(){
     document.getElementById("countToday").textContent = dueListToday().length || "";
     document.getElementById("countAll").textContent = INDEX.length || "";
@@ -661,6 +716,9 @@
 
   // ---------- rendering ----------
   async function render(){
+    // filtre artık var olmayan bir derse işaret ediyorsa sıfırla
+    if(activeSubject && activeSubject !== "__none__" && !INDEX.some(e=>e.subject === activeSubject)) activeSubject = "";
+    if(activeSubject === "__none__" && !INDEX.some(e=>!e.subject)) activeSubject = "";
     updateCounts();
     updateBadge();
     if(currentView === "today") await renderToday();
@@ -673,30 +731,43 @@
     card.className = "card" + (extraClass ? " " + extraClass : "");
     card.innerHTML =
       '<img class="thumb" src="'+(photo||"")+'" alt="Soru fotoğrafı">'+ stampHtml +
-      '<div class="meta"><div class="note">'+escapeHtml(entry.note || "Not eklenmedi")+'</div>'+
-      '<div class="date">'+displayDate(entry.dateCaptured)+'</div></div>';
+      '<div class="meta"><div class="note">'+escapeHtml(entry.note || (entry.subject || "Not eklenmedi"))+'</div>'+
+      '<div class="date">'+displayDate(entry.dateCaptured)+(entry.subject ? ' · '+escapeHtml(entry.subject) : '')+'</div></div>';
     card.addEventListener("click", ()=> openView(entry.id, clickInterval));
     return card;
   }
 
   async function renderToday(){
-    const due = dueListToday();
-    const worked = workedTodayList();
+    const dueAll = dueListToday();
+    const workedAll = workedTodayList();
+    const due = dueAll.filter(x=>matchesFilter(x.entry));
+    const worked = workedAll.filter(x=>matchesFilter(x.entry));
     const next = nextDueInfo();
-    if(due.length === 0 && worked.length === 0){
-      contentEl.innerHTML =
+    let html = subjectFilterHtml();
+    if(dueAll.length === 0 && workedAll.length === 0){
+      html +=
         '<div class="empty"><div class="glyph">🌤️</div><h2>Bugün için tekrar yok</h2>'+
         '<p>Yeni bir soru eklemek için aşağıdaki + butonuna dokun'+(INDEX.length? ', ya da sıradaki tekrarı bekle.' : '.')+'</p>'+
         (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
         '</div>';
+      contentEl.innerHTML = html;
+      wireFilterRow();
       return;
     }
-    let html = "";
+    if(due.length === 0 && worked.length === 0){
+      html += '<div class="empty" style="padding:40px 24px;"><div class="glyph">📚</div><h2>Bu derste bugün tekrar yok</h2>'+
+        '<p>Başka bir ders seç ya da "Hepsi"ne dön.</p></div>';
+      contentEl.innerHTML = html;
+      wireFilterRow();
+      return;
+    }
     if(due.length === 0){
-      html += '<div class="empty" style="padding:30px 24px 6px;"><div class="glyph">🎉</div><h2>Bugünlük hepsi bitti!</h2>'+
-        '<p>Bugünkü bütün tekrarları çalıştın. Harikasın 💜</p>'+
-        (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
-        '</div>';
+      html += activeSubject
+        ? '<div class="empty" style="padding:26px 24px 6px;"><div class="glyph">✓</div><h2>Bu dersin tekrarları bitti</h2></div>'
+        : '<div class="empty" style="padding:30px 24px 6px;"><div class="glyph">🎉</div><h2>Bugünlük hepsi bitti!</h2>'+
+          '<p>Bugünkü bütün tekrarları çalıştın. Harikasın 💜</p>'+
+          (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
+          '</div>';
     }else{
       html += '<div class="section-label">Bugün gözden geçir — '+due.length+' kaldı</div><div class="grid" id="todayGrid"></div>';
     }
@@ -704,6 +775,7 @@
       html += '<div class="section-label">Bugün çalıştıkların ✓ — '+worked.length+'</div><div class="grid" id="workedGrid"></div>';
     }
     contentEl.innerHTML = html;
+    wireFilterRow();
     const grid = document.getElementById("todayGrid");
     if(grid){
       for(const item of due){
@@ -732,30 +804,41 @@
     }
     const learnedCount = INDEX.filter(isLearned).length;
     const sorted = [...INDEX].sort((a,b)=> a.dateCaptured < b.dateCaptured ? 1 : -1);
-    contentEl.innerHTML =
-      '<div class="section-label">Tüm kayıtlar — '+INDEX.length+' soru'+(learnedCount? ' · '+learnedCount+' öğrenildi 🎉':'')+'</div>'+
-      '<div id="allList"></div>';
+    const filtered = sorted.filter(matchesFilter);
+    const label = !activeSubject ? "Tüm kayıtlar" : (activeSubject === "__none__" ? "Diğer" : activeSubject);
+    let html = subjectFilterHtml();
+    html += '<div class="section-label">'+escapeHtml(label)+' — '+filtered.length+' soru'+
+      (!activeSubject && learnedCount ? ' · '+learnedCount+' öğrenildi 🎉' : '')+'</div>';
+    if(filtered.length === 0){
+      html += '<div class="empty" style="padding:30px 24px;"><div class="glyph">📚</div><p>Bu derste kayıt yok.</p></div>';
+    }else{
+      html += '<div id="allList"></div>';
+    }
+    contentEl.innerHTML = html;
+    wireFilterRow();
     const list = document.getElementById("allList");
-    const today = todayStr();
-    for(const entry of sorted){
-      const photo = await loadPhoto(entry.id);
-      const row = document.createElement("div");
-      row.className = "list-item";
-      function badgeHtml(k){
-        if(entry.done[k]) return '<span class="badge done">'+intervalShort[k]+' ✓</span>';
-        if(entry.due[k] <= today) return '<span class="badge due">'+intervalShort[k]+' bugün</span>';
-        return '<span class="badge">'+intervalShort[k]+' · '+displayDate(entry.due[k])+'</span>';
+    if(list){
+      const today = todayStr();
+      for(const entry of filtered){
+        const photo = await loadPhoto(entry.id);
+        const row = document.createElement("div");
+        row.className = "list-item";
+        function badgeHtml(k){
+          if(entry.done[k]) return '<span class="badge done">'+intervalShort[k]+' ✓</span>';
+          if(entry.due[k] <= today) return '<span class="badge due">'+intervalShort[k]+' bugün</span>';
+          return '<span class="badge">'+intervalShort[k]+' · '+displayDate(entry.due[k])+'</span>';
+        }
+        row.innerHTML =
+          '<img class="thumb-sm" src="'+(photo||"")+'" alt="">'+
+          '<div class="info"><div class="note">'+escapeHtml(entry.note || (entry.subject || "Not eklenmedi"))+'</div>'+
+          '<div class="date">'+displayDate(entry.dateCaptured)+(entry.subject ? ' · '+escapeHtml(entry.subject) : '')+'</div>'+
+          '<div class="badges">'+badgeHtml("d1")+badgeHtml("d7")+badgeHtml("d30")+'</div></div>'+
+          '<button class="del-btn" aria-label="Sil">✕</button>';
+        row.querySelector(".info").addEventListener("click", ()=> openView(entry.id, null));
+        row.querySelector(".thumb-sm").addEventListener("click", ()=> openView(entry.id, null));
+        row.querySelector(".del-btn").addEventListener("click", (e)=>{ e.stopPropagation(); removeEntry(entry.id); });
+        list.appendChild(row);
       }
-      row.innerHTML =
-        '<img class="thumb-sm" src="'+(photo||"")+'" alt="">'+
-        '<div class="info"><div class="note">'+escapeHtml(entry.note||"Not eklenmedi")+'</div>'+
-        '<div class="date">'+displayDate(entry.dateCaptured)+'</div>'+
-        '<div class="badges">'+badgeHtml("d1")+badgeHtml("d7")+badgeHtml("d30")+'</div></div>'+
-        '<button class="del-btn" aria-label="Sil">✕</button>';
-      row.querySelector(".info").addEventListener("click", ()=> openView(entry.id, null));
-      row.querySelector(".thumb-sm").addEventListener("click", ()=> openView(entry.id, null));
-      row.querySelector(".del-btn").addEventListener("click", (e)=>{ e.stopPropagation(); removeEntry(entry.id); });
-      list.appendChild(row);
     }
     renderBackupRow();
   }
@@ -784,7 +867,8 @@
     activeEntryId = id;
     const photo = await loadPhoto(id);
     document.getElementById("viewPhoto").src = photo || "";
-    document.getElementById("viewNote").textContent = entry.note || "Not eklenmedi";
+    const metaTxt = (entry.subject || "") + (entry.note ? (entry.subject ? " — " : "") + entry.note : "");
+    document.getElementById("viewNote").textContent = metaTxt || "Not eklenmedi";
     const today = todayStr();
 
     // hangi tekrar işlenecek: karttan gelen, yoksa vadesi gelmiş en erken tekrar
@@ -1168,7 +1252,7 @@
     const id = "e" + Date.now() + Math.floor(Math.random()*1000);
     const today = todayStr();
     const entry = {
-      id: id, dateCaptured: today, note: qcamSubject || "",
+      id: id, dateCaptured: today, subject: qcamSubject, note: "",
       due: { d1: addDays(today,1), d7: addDays(today,7), d30: addDays(today,30) },
       done: { d1:false, d7:false, d30:false }
     };
@@ -1261,10 +1345,14 @@
   document.getElementById("subjectChips").addEventListener("click", function(e){
     const chip = e.target.closest(".chip");
     if(!chip) return;
+    if(pendingSubject === chip.dataset.subj){
+      pendingSubject = "";
+      chip.classList.remove("selected");
+      return;
+    }
     document.querySelectorAll("#subjectChips .chip").forEach(c=>c.classList.remove("selected"));
     chip.classList.add("selected");
     pendingSubject = chip.dataset.subj;
-    if(!noteInput.value) noteInput.value = pendingSubject + " - ";
   });
 
   document.getElementById("cancelAdd").addEventListener("click", closeAddModal);
@@ -1278,6 +1366,7 @@
     const entry = {
       id: id,
       dateCaptured: today,
+      subject: pendingSubject,
       note: noteInput.value.trim(),
       due: { d1: addDays(today,1), d7: addDays(today,7), d30: addDays(today,30) },
       done: { d1:false, d7:false, d30:false }
@@ -1338,6 +1427,7 @@
         if(p) await savePhoto(entry.id, p);
         count++;
       }
+      migrateSubjects(); // eski formattan gelen yedeklerde ders alanını tamamla
       await saveIndex(INDEX);
       showToast(count + " kayıt geri yüklendi ✓");
       render();
@@ -1404,6 +1494,7 @@
       }
     }catch(e){}
     INDEX = await loadIndex();
+    if(migrateSubjects()) await saveIndex(INDEX);
     render();
     setupInstallHint();
     if("serviceWorker" in navigator && location.protocol.indexOf("http") === 0){
