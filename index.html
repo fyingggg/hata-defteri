@@ -100,7 +100,7 @@
     transform:rotate(0deg); transition:transform .15s ease;
   }
   .card:active{transform:scale(0.97);}
-  .card .thumb{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#ddd4bf;}
+  .card .thumb{width:100%; aspect-ratio:4/3; object-fit:contain; display:block; background:#E3D9C3;}
   .card .meta{padding:9px 10px 11px;}
   .card .note{font-size:0.78rem; color:var(--card-ink); font-weight:600; line-height:1.25;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:1.2em;}
@@ -227,6 +227,33 @@
     color:#fff; font-size:1.15rem; cursor:pointer;
   }
 
+  /* fotoğraf kırpma ekranı */
+  .cropper{
+    position:fixed; inset:0; background:#0B0F14; z-index:75; display:flex; flex-direction:column;
+    padding:calc(14px + env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom));
+  }
+  .crop-stage{
+    position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:none;
+  }
+  .crop-stage img{max-width:100%; max-height:100%; display:block; pointer-events:none; user-select:none; -webkit-user-select:none;}
+  .crop-box{position:absolute; border:1.5px solid var(--amber); box-shadow:0 0 0 200vmax rgba(8,10,13,0.74); touch-action:none; cursor:move;}
+  .crop-grid{
+    position:absolute; inset:0; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(242,235,219,0.32) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(242,235,219,0.32) 1px, transparent 1px);
+    background-size:100% 33.34%, 33.34% 100%;
+  }
+  .crop-handle{position:absolute; width:38px; height:38px; z-index:2;}
+  .crop-handle::after{content:""; position:absolute; inset:9px; border:0 solid var(--amber);}
+  .h-nw{top:-19px; left:-19px;} .h-nw::after{border-top-width:4px; border-left-width:4px;}
+  .h-ne{top:-19px; right:-19px;} .h-ne::after{border-top-width:4px; border-right-width:4px;}
+  .h-sw{bottom:-19px; left:-19px;} .h-sw::after{border-bottom-width:4px; border-left-width:4px;}
+  .h-se{bottom:-19px; right:-19px;} .h-se::after{border-bottom-width:4px; border-right-width:4px;}
+  .crop-tip{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted-2); text-align:center; margin:10px 0;}
+  .crop-bar{display:flex; gap:10px;}
+
   .toast{
     position:fixed; bottom:calc(110px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:var(--sage);
     color:#0F1A11; padding:11px 20px; border-radius:999px; font-weight:700; font-size:0.85rem;
@@ -282,6 +309,7 @@
     </div>
     <div class="pick-row">
       <button class="pick-link hidden" id="retakeBtn">↻ Yeniden çek</button>
+      <button class="pick-link hidden" id="cropAgainBtn">✂️ Yeniden kırp</button>
       <button class="pick-link" id="galleryBtn">🖼 Galeriden seç</button>
     </div>
 
@@ -315,6 +343,26 @@
       <button class="btn btn-secondary" id="closeView">Kapat</button>
       <button class="btn btn-secondary" id="deleteEntry" style="color:var(--rust);">Sil</button>
     </div>
+  </div>
+</div>
+
+<!-- CROP OVERLAY -->
+<div class="cropper hidden" id="cropper">
+  <div class="crop-stage" id="cropStage">
+    <img id="cropImg" alt="Kırpılacak fotoğraf" draggable="false">
+    <div class="crop-box" id="cropBox">
+      <div class="crop-grid"></div>
+      <div class="crop-handle h-nw" data-h="nw"></div>
+      <div class="crop-handle h-ne" data-h="ne"></div>
+      <div class="crop-handle h-sw" data-h="sw"></div>
+      <div class="crop-handle h-se" data-h="se"></div>
+    </div>
+  </div>
+  <p class="crop-tip">Soruyu çerçeveye al — köşelerden tut, taşımak için içinden sürükle</p>
+  <div class="crop-bar">
+    <button class="btn btn-secondary" id="cropCancel">Vazgeç</button>
+    <button class="btn btn-secondary" id="cropRotate">↺ Döndür</button>
+    <button class="btn btn-primary" id="cropUse">Kullan ✓</button>
   </div>
 </div>
 
@@ -432,6 +480,7 @@
   let INDEX = [];
   let currentView = "today";
   let pendingImage = null;
+  let pendingSource = null;
   let pendingSubject = "";
   let activeEntryId = null;
   let activeInterval = null;
@@ -719,13 +768,15 @@
   const previewWrap = document.getElementById("previewWrap");
   const previewImg = document.getElementById("previewImg");
   const retakeBtn = document.getElementById("retakeBtn");
+  const cropAgainBtn = document.getElementById("cropAgainBtn");
   const saveAddBtn = document.getElementById("saveAdd");
   const noteInput = document.getElementById("noteInput");
 
   function openAddModal(){
-    pendingImage = null; pendingSubject = "";
+    pendingImage = null; pendingSource = null; pendingSubject = "";
     previewWrap.classList.add("hidden");
     retakeBtn.classList.add("hidden");
+    cropAgainBtn.classList.add("hidden");
     captureZone.classList.remove("hidden");
     noteInput.value = "";
     saveAddBtn.disabled = true;
@@ -734,17 +785,35 @@
   }
   function closeAddModal(){ addModal.classList.add("hidden"); }
 
+  function applyCropResult(result){
+    if(result === null){
+      // kırpmadan vazgeçti: elde önceki fotoğraf yoksa çekim ekranına dön
+      if(!pendingImage){
+        captureZone.classList.remove("hidden");
+        previewWrap.classList.add("hidden");
+        retakeBtn.classList.add("hidden");
+        cropAgainBtn.classList.add("hidden");
+        saveAddBtn.disabled = true;
+      }
+      return;
+    }
+    pendingImage = result;
+    previewImg.src = result;
+    previewWrap.classList.remove("hidden");
+    captureZone.classList.add("hidden");
+    retakeBtn.classList.remove("hidden");
+    cropAgainBtn.classList.remove("hidden");
+    saveAddBtn.disabled = false;
+  }
+
   async function handlePickedFile(input){
     const file = input.files && input.files[0];
     if(!file) return;
     try{
-      const compressed = await compressImage(file, 1100, 0.7);
-      pendingImage = compressed;
-      previewImg.src = compressed;
-      previewWrap.classList.remove("hidden");
-      captureZone.classList.add("hidden");
-      retakeBtn.classList.remove("hidden");
-      saveAddBtn.disabled = false;
+      // kırpma için yüksek çözünürlüklü çalışma kopyası
+      const working = await compressImage(file, 2200, 0.9);
+      pendingSource = working;
+      openCropper(working, applyCropResult);
     }catch(e){
       showToast("Fotoğraf işlenemedi, tekrar dene");
     }
@@ -753,9 +822,136 @@
 
   captureZone.addEventListener("click", ()=> cameraInput.click());
   retakeBtn.addEventListener("click", ()=> cameraInput.click());
+  cropAgainBtn.addEventListener("click", ()=>{ if(pendingSource) openCropper(pendingSource, applyCropResult); });
   document.getElementById("galleryBtn").addEventListener("click", ()=> galleryInput.click());
   cameraInput.addEventListener("change", ()=> handlePickedFile(cameraInput));
   galleryInput.addEventListener("change", ()=> handlePickedFile(galleryInput));
+
+  // ---------- fotoğraf kırpma ----------
+  const cropperEl = document.getElementById("cropper");
+  const cropImg = document.getElementById("cropImg");
+  const cropBox = document.getElementById("cropBox");
+  let cropSrc = null, cropRect = null, cropCb = null;
+  let dragMode = null, dragStart = null, rectStart = null;
+
+  function imgBox(){
+    return {left:cropImg.offsetLeft, top:cropImg.offsetTop, w:cropImg.offsetWidth, h:cropImg.offsetHeight};
+  }
+  function applyCropBox(){
+    const b = imgBox();
+    cropBox.style.left = (b.left + cropRect.x) + "px";
+    cropBox.style.top = (b.top + cropRect.y) + "px";
+    cropBox.style.width = cropRect.w + "px";
+    cropBox.style.height = cropRect.h + "px";
+  }
+  function resetCropBox(){
+    const b = imgBox();
+    cropRect = {x:0, y:0, w:b.w, h:b.h};
+    applyCropBox();
+  }
+  function openCropper(dataUrl, cb){
+    cropSrc = dataUrl; cropCb = cb;
+    cropperEl.classList.remove("hidden");
+    document.body.classList.add("no-scroll");
+    cropImg.onload = function(){ requestAnimationFrame(resetCropBox); };
+    cropImg.src = dataUrl;
+    if(cropImg.complete && cropImg.naturalWidth) requestAnimationFrame(resetCropBox);
+  }
+  function closeCropper(){
+    cropperEl.classList.add("hidden");
+    document.body.classList.remove("no-scroll");
+    dragMode = null;
+  }
+
+  cropBox.addEventListener("pointerdown", function(e){
+    if(!cropRect) return;
+    const h = e.target.closest(".crop-handle");
+    dragMode = h ? h.dataset.h : "move";
+    dragStart = {x:e.clientX, y:e.clientY};
+    rectStart = {x:cropRect.x, y:cropRect.y, w:cropRect.w, h:cropRect.h};
+    if(cropBox.setPointerCapture) cropBox.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cropBox.addEventListener("pointermove", function(e){
+    if(!dragMode) return;
+    const b = imgBox();
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    const MIN = 46;
+    const r = {x:rectStart.x, y:rectStart.y, w:rectStart.w, h:rectStart.h};
+    if(dragMode === "move"){
+      r.x = Math.min(Math.max(0, rectStart.x + dx), b.w - r.w);
+      r.y = Math.min(Math.max(0, rectStart.y + dy), b.h - r.h);
+    }else{
+      if(dragMode.indexOf("w") >= 0){
+        const nx = Math.min(Math.max(0, rectStart.x + dx), rectStart.x + rectStart.w - MIN);
+        r.w = rectStart.w + (rectStart.x - nx); r.x = nx;
+      }
+      if(dragMode.indexOf("e") >= 0){
+        r.w = Math.min(Math.max(MIN, rectStart.w + dx), b.w - rectStart.x);
+      }
+      if(dragMode.indexOf("n") >= 0){
+        const ny = Math.min(Math.max(0, rectStart.y + dy), rectStart.y + rectStart.h - MIN);
+        r.h = rectStart.h + (rectStart.y - ny); r.y = ny;
+      }
+      if(dragMode.indexOf("s") >= 0){
+        r.h = Math.min(Math.max(MIN, rectStart.h + dy), b.h - rectStart.y);
+      }
+    }
+    cropRect = r; applyCropBox();
+  });
+  function endCropDrag(){ dragMode = null; }
+  cropBox.addEventListener("pointerup", endCropDrag);
+  cropBox.addEventListener("pointercancel", endCropDrag);
+  window.addEventListener("resize", function(){
+    if(!cropperEl.classList.contains("hidden") && cropImg.naturalWidth) resetCropBox();
+  });
+
+  document.getElementById("cropRotate").addEventListener("click", function(){
+    if(!cropSrc) return;
+    const img = new Image();
+    img.onload = function(){
+      const c = document.createElement("canvas");
+      c.width = img.height; c.height = img.width;
+      const ctx = c.getContext("2d");
+      ctx.translate(c.width, 0);
+      ctx.rotate(Math.PI/2);
+      ctx.drawImage(img, 0, 0);
+      cropSrc = c.toDataURL("image/jpeg", 0.9);
+      cropImg.onload = function(){ requestAnimationFrame(resetCropBox); };
+      cropImg.src = cropSrc;
+    };
+    img.src = cropSrc;
+  });
+
+  document.getElementById("cropCancel").addEventListener("click", function(){
+    closeCropper();
+    if(cropCb) cropCb(null);
+  });
+
+  document.getElementById("cropUse").addEventListener("click", function(){
+    if(!cropSrc || !cropRect) return;
+    const img = new Image();
+    img.onload = function(){
+      const b = imgBox();
+      const scale = img.width / b.w;
+      const sx = Math.max(0, cropRect.x * scale);
+      const sy = Math.max(0, cropRect.y * scale);
+      const sw = Math.min(img.width - sx, cropRect.w * scale);
+      const sh = Math.min(img.height - sy, cropRect.h * scale);
+      if(sw < 10 || sh < 10){ closeCropper(); if(cropCb) cropCb(null); return; }
+      const k = Math.min(1, 1500 / Math.max(sw, sh));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(sw * k));
+      c.height = Math.max(1, Math.round(sh * k));
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      const result = c.toDataURL("image/jpeg", 0.76);
+      pendingSource = cropSrc; // döndürülmüşse "yeniden kırp" da döndürülmüş halden açılsın
+      closeCropper();
+      if(cropCb) cropCb(result);
+    };
+    img.src = cropSrc;
+  });
 
   document.getElementById("subjectChips").addEventListener("click", function(e){
     const chip = e.target.closest(".chip");
