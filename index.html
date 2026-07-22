@@ -139,6 +139,21 @@
   .badge.due{background:rgba(232,163,61,0.18); color:var(--amber); border-color:rgba(232,163,61,0.45);}
   .del-btn{background:none; border:none; color:var(--text-muted); font-size:1.1rem; padding:6px 8px; cursor:pointer;}
 
+  /* ---- Stats ---- */
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;}
+  .stat-card{background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;}
+  .stat-card .num{font-family:'Fraunces',serif; font-size:1.9rem; color:var(--amber); line-height:1.1;}
+  .stat-card .num.sage{color:var(--sage);}
+  .stat-card .lbl{font-size:0.68rem; color:var(--text-muted-2); margin-top:4px; font-family:'IBM Plex Mono',monospace; letter-spacing:0.06em; text-transform:uppercase;}
+  .subj-row{background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px;}
+  .subj-row .top{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
+  .subj-row .name{font-weight:700; font-size:0.95rem; color:var(--text);}
+  .subj-row .nums{font-family:'IBM Plex Mono',monospace; font-size:0.66rem; color:var(--text-muted-2); text-align:right; flex-shrink:0;}
+  .bar{height:8px; background:var(--bg); border-radius:99px; margin-top:9px; overflow:hidden; border:1px solid var(--border);}
+  .bar > div{height:100%; background:var(--sage); border-radius:99px;}
+  .storage-line{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted); text-align:center; margin-top:18px; min-height:1em;}
+  .show-more{width:100%; margin-top:4px; padding:13px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text-muted-2); font-family:'Inter',sans-serif; font-size:0.88rem; font-weight:600; cursor:pointer;}
+
   /* ---- Backup row ---- */
   .backup-row{display:flex; gap:10px; margin:24px 0 6px;}
   .backup-row .btn{font-size:0.85rem; padding:12px;}
@@ -348,6 +363,7 @@
   <div class="tabs">
     <button class="tab active" data-view="today">Bugün <span class="count" id="countToday"></span></button>
     <button class="tab" data-view="all">Tümü <span class="count" id="countAll"></span></button>
+    <button class="tab" data-view="stats">Özet</button>
   </div>
 
   <main id="content"></main>
@@ -540,6 +556,41 @@
   }
   async function deletePhotoKey(id){
     await kvDel("hata_photo_" + id);
+    await kvDel("hata_thumb_" + id);
+  }
+
+  // ---------- küçük önizlemeler (listeler tam boy fotoğrafla boğulmasın) ----------
+  function shrinkDataUrl(dataUrl, maxW, quality){
+    return new Promise(function(resolve, reject){
+      const img = new Image();
+      img.onload = function(){
+        const s = Math.min(1, maxW / img.width);
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * s));
+        c.height = Math.max(1, Math.round(img.height * s));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = function(){ reject(new Error("thumb")); };
+      img.src = dataUrl;
+    });
+  }
+  async function saveThumbFor(id, fullDataUrl){
+    try{
+      const t = await shrinkDataUrl(fullDataUrl, 300, 0.62);
+      await kvSet("hata_thumb_" + id, t);
+      return t;
+    }catch(e){ return null; }
+  }
+  // önizlemeyi getir; eski kayıtlarda yoksa tam fotoğraftan üretip sakla
+  async function loadThumb(id){
+    try{
+      const t = await kvGet("hata_thumb_" + id);
+      if(t) return t;
+      const full = await kvGet("hata_photo_" + id);
+      if(!full) return null;
+      return (await saveThumbFor(id, full)) || full;
+    }catch(e){ return null; }
   }
 
   // ---------- image compression ----------
@@ -569,6 +620,7 @@
   let INDEX = [];
   let currentView = "today";
   let activeSubject = ""; // "" = hepsi, "__none__" = ders atanmamışlar
+  let allLimit = 60, allLimitKey = ""; // "Tümü" listesi sayfa sayfa yüklensin
   let pendingImage = null;
   let pendingSource = null;
   let pendingSubject = "";
@@ -722,11 +774,12 @@
     updateCounts();
     updateBadge();
     if(currentView === "today") await renderToday();
+    else if(currentView === "stats") await renderStats();
     else await renderAll();
   }
 
   async function buildCard(entry, stampHtml, clickInterval, extraClass){
-    const photo = await loadPhoto(entry.id);
+    const photo = await loadThumb(entry.id);
     const card = document.createElement("div");
     card.className = "card" + (extraClass ? " " + extraClass : "");
     card.innerHTML =
@@ -799,12 +852,13 @@
       contentEl.innerHTML =
         '<div class="empty"><div class="glyph">🗂️</div><h2>Henüz soru eklenmedi</h2>'+
         '<p>Çözemediğin ilk soruyu + butonuyla ekleyerek başla.</p></div>';
-      renderBackupRow();
       return;
     }
     const learnedCount = INDEX.filter(isLearned).length;
     const sorted = [...INDEX].sort((a,b)=> a.dateCaptured < b.dateCaptured ? 1 : -1);
     const filtered = sorted.filter(matchesFilter);
+    if(allLimitKey !== activeSubject){ allLimit = 60; allLimitKey = activeSubject; }
+    const visible = filtered.slice(0, allLimit);
     const label = !activeSubject ? "Tüm kayıtlar" : (activeSubject === "__none__" ? "Diğer" : activeSubject);
     let html = subjectFilterHtml();
     html += '<div class="section-label">'+escapeHtml(label)+' — '+filtered.length+' soru'+
@@ -819,8 +873,8 @@
     const list = document.getElementById("allList");
     if(list){
       const today = todayStr();
-      for(const entry of filtered){
-        const photo = await loadPhoto(entry.id);
+      for(const entry of visible){
+        const photo = await loadThumb(entry.id);
         const row = document.createElement("div");
         row.className = "list-item";
         function badgeHtml(k){
@@ -839,8 +893,70 @@
         row.querySelector(".del-btn").addEventListener("click", (e)=>{ e.stopPropagation(); removeEntry(entry.id); });
         list.appendChild(row);
       }
+      if(filtered.length > visible.length){
+        const more = document.createElement("button");
+        more.className = "show-more";
+        more.textContent = "Daha fazla göster (" + (filtered.length - visible.length) + " soru daha)";
+        more.addEventListener("click", function(){ allLimit += 120; render(); });
+        list.appendChild(more);
+      }
     }
+  }
+
+  // ---------- istatistik ----------
+  async function renderStats(){
+    const today = todayStr();
+    let totalReviews = 0, learned = 0, todayWorked = 0;
+    INDEX.forEach(function(e){
+      ["d1","d7","d30"].forEach(function(k){
+        if(e.done[k]){ totalReviews++; if(e.done[k] === today) todayWorked++; }
+      });
+      if(isLearned(e)) learned++;
+      if(e.failedOn === today) todayWorked++;
+    });
+    function sc(num, lbl, cls){
+      return '<div class="stat-card"><div class="num'+(cls?' '+cls:'')+'">'+num+'</div><div class="lbl">'+lbl+'</div></div>';
+    }
+    let html = '<div class="stat-grid">'+
+      sc(INDEX.length, "Toplam Soru") +
+      sc(learned, "Öğrenilen", "sage") +
+      sc(totalReviews, "Tamamlanan Tekrar") +
+      sc(todayWorked, "Bugün Çalışılan") +
+      '</div>';
+    const groups = {};
+    INDEX.forEach(function(e){ const s = e.subject || "Diğer"; (groups[s] = groups[s] || []).push(e); });
+    const names = Object.keys(groups).sort(function(a,b){ return groups[b].length - groups[a].length; });
+    if(names.length){
+      html += '<div class="section-label">Ders ders durum</div>';
+      names.forEach(function(s){
+        const arr = groups[s];
+        let l = 0, r = 0;
+        arr.forEach(function(e){
+          if(isLearned(e)) l++;
+          ["d1","d7","d30"].forEach(function(k){ if(e.done[k]) r++; });
+        });
+        const pct = Math.round(l * 100 / arr.length);
+        html += '<div class="subj-row"><div class="top"><span class="name">'+escapeHtml(s)+'</span>'+
+          '<span class="nums">'+arr.length+' soru · '+r+' tekrar · '+l+' öğrenildi</span></div>'+
+          '<div class="bar"><div style="width:'+pct+'%"></div></div></div>';
+      });
+    }else{
+      html += '<div class="empty" style="padding:34px 24px;"><div class="glyph">📊</div><p>Soru ekledikçe istatistikler burada birikecek.</p></div>';
+    }
+    html += '<div class="storage-line" id="storageLine"></div>';
+    contentEl.innerHTML = html;
     renderBackupRow();
+    try{
+      if(navigator.storage && navigator.storage.estimate){
+        navigator.storage.estimate().then(function(est){
+          if(est && est.usage){
+            const mb = est.usage / (1024*1024);
+            const el = document.getElementById("storageLine");
+            if(el) el.textContent = "Depolama: ~" + (mb >= 100 ? Math.round(mb) : mb.toFixed(1)) + " MB kullanılıyor";
+          }
+        }).catch(function(){});
+      }
+    }catch(e){}
   }
 
   function renderBackupRow(){
@@ -1257,6 +1373,7 @@
       done: { d1:false, d7:false, d30:false }
     };
     const photoOk = await savePhoto(id, dataUrl);
+    if(photoOk) await saveThumbFor(id, dataUrl);
     INDEX.push(entry);
     const idxOk = await saveIndex(INDEX);
     if(photoOk && idxOk){
@@ -1372,6 +1489,7 @@
       done: { d1:false, d7:false, d30:false }
     };
     const photoOk = await savePhoto(id, pendingImage);
+    if(photoOk) await saveThumbFor(id, pendingImage);
     INDEX.push(entry);
     const idxOk = await saveIndex(INDEX);
     saveAddBtn.textContent = "Kaydet";
@@ -1392,13 +1510,20 @@
   // ---------- backup / restore ----------
   async function exportBackup(){
     try{
-      const photos = {};
+      // JSON'u tek dev metin yerine parça parça kur: yüzlerce fotoğrafta bellek şişmesin
+      const parts = [
+        '{"app":"hata-defteri","version":1,"exportedAt":' + JSON.stringify(new Date().toISOString()) +
+        ',"index":' + JSON.stringify(INDEX) + ',"photos":{'
+      ];
+      let first = true;
       for(const e of INDEX){
         const p = await loadPhoto(e.id);
-        if(p) photos[e.id] = p;
+        if(!p) continue;
+        parts.push((first ? "" : ",") + JSON.stringify(e.id) + ":" + JSON.stringify(p));
+        first = false;
       }
-      const data = { app:"hata-defteri", version:1, exportedAt:new Date().toISOString(), index:INDEX, photos:photos };
-      const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+      parts.push("}}");
+      const blob = new Blob(parts, {type:"application/json"});
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "hata-defteri-yedek-" + todayStr() + ".json";
