@@ -1,5 +1,5 @@
 /* Hata Defteri — service worker: uygulama kabuğunu önbelleğe alır, internetsiz çalıştırır */
-const CACHE = "hata-defteri-v7";
+const CACHE = "hata-defteri-v8";
 const PRECACHE = [
   "./",
   "./index.html",
