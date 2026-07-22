@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hata Defteri">
+<meta name="theme-color" content="#121820">
+<title>Hata Defteri</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#121820;
+    --bg-elevated:#1B242E;
+    --bg-elevated-2:#232E39;
+    --card:#F2EBDB;
+    --card-ink:#241C12;
+    --text:#ECE6D8;
+    --text-muted:#93998F;
+    --text-muted-2: #B9AF9A;
+    --amber:#E8A33D;
+    --amber-ink:#4A2E0A;
+    --rust:#B15A34;
+    --sage:#7A9B7E;
+    --border: rgba(236,230,216,0.12);
+    --border-card: rgba(36,28,18,0.14);
+    --radius: 14px;
+    --shadow: 0 8px 24px rgba(0,0,0,0.28);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    overscroll-behavior-y: none;
+  }
+  body.no-scroll{overflow:hidden;}
+  /* opaque strip behind the iPhone status bar in standalone mode */
+  body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:40;}
+  h1,h2,h3{font-family:'Fraunces',serif; margin:0; font-weight:600;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .hidden{display:none !important;}
+  .app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(110px + env(safe-area-inset-bottom));}
+
+  /* ---- Header ---- */
+  .topbar{padding:calc(28px + env(safe-area-inset-top)) 20px 14px;}
+  .topbar h1{font-size:1.9rem; letter-spacing:-0.01em; color:var(--text);}
+  .topbar .tagline{margin-top:4px; font-size:0.88rem; color:var(--text-muted-2); font-weight:400;}
+
+  /* ---- Install hint ---- */
+  .install-hint{
+    margin:0 20px 14px; padding:12px 14px; border-radius:var(--radius);
+    background:rgba(232,163,61,0.12); border:1px solid rgba(232,163,61,0.4);
+    display:flex; gap:10px; align-items:flex-start; font-size:0.84rem; line-height:1.45; color:var(--text-muted-2);
+  }
+  .install-hint b{color:var(--amber);}
+  .install-hint .dismiss{background:none; border:none; color:var(--text-muted); font-size:1rem; padding:2px 4px; cursor:pointer; flex-shrink:0;}
+
+  /* ---- Tabs ---- */
+  .tabs{display:flex; gap:6px; padding:4px 20px 18px; position:sticky; top:env(safe-area-inset-top); background:var(--bg); z-index:5;}
+  .tab{
+    flex:1; padding:10px 12px; border-radius:999px; border:1px solid var(--border);
+    background:transparent; color:var(--text-muted-2); font-family:'Inter',sans-serif;
+    font-size:0.92rem; font-weight:600; cursor:pointer; transition:all .18s ease;
+  }
+  .tab.active{background:var(--amber); color:var(--amber-ink); border-color:var(--amber);}
+  .tab .count{margin-left:6px; opacity:0.75; font-weight:500;}
+
+  main{flex:1; padding:0 20px;}
+
+  /* ---- Empty state ---- */
+  .empty{
+    text-align:center; padding:56px 24px; color:var(--text-muted-2);
+  }
+  .empty .glyph{font-size:2.6rem; margin-bottom:14px; opacity:0.85;}
+  .empty h2{color:var(--text); font-size:1.25rem; margin-bottom:8px;}
+  .empty p{font-size:0.92rem; line-height:1.5; max-width:320px; margin:0 auto;}
+  .empty .next-due{margin-top:14px; font-family:'IBM Plex Mono',monospace; font-size:0.78rem; color:var(--amber);}
+
+  /* ---- Section label ---- */
+  .section-label{
+    font-family:'IBM Plex Mono',monospace; font-size:0.72rem; letter-spacing:0.09em;
+    text-transform:uppercase; color:var(--text-muted); margin:18px 2px 10px;
+  }
+
+  /* ---- Card grid ---- */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .card{
+    position:relative; background:var(--card); border-radius:var(--radius);
+    overflow:hidden; box-shadow:var(--shadow); cursor:pointer; border:1px solid var(--border-card);
+    transform:rotate(0deg); transition:transform .15s ease;
+  }
+  .card:active{transform:scale(0.97);}
+  .card .thumb{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#ddd4bf;}
+  .card .meta{padding:9px 10px 11px;}
+  .card .note{font-size:0.78rem; color:var(--card-ink); font-weight:600; line-height:1.25;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:1.2em;}
+  .card .date{font-family:'IBM Plex Mono',monospace; font-size:0.66rem; color:rgba(36,28,18,0.55); margin-top:3px;}
+
+  .stamp{
+    position:absolute; top:8px; right:8px; background:var(--amber); color:var(--amber-ink);
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:0.62rem; letter-spacing:0.04em;
+    padding:4px 7px; border-radius:3px; transform:rotate(-6deg); border:1.5px solid rgba(74,46,10,0.55);
+    box-shadow:1px 2px 0 rgba(0,0,0,0.18);
+  }
+  .stamp.overdue{background:var(--rust); color:#FBEDE4; border-color:rgba(60,20,8,0.5);}
+
+  /* status row for "Tümü" list */
+  .list-item{
+    display:flex; gap:12px; background:var(--bg-elevated); border:1px solid var(--border);
+    border-radius:var(--radius); padding:10px; margin-bottom:10px; align-items:center;
+  }
+  .list-item .thumb-sm{width:56px; height:56px; border-radius:9px; object-fit:cover; flex-shrink:0; background:#333;}
+  .list-item .info{flex:1; min-width:0;}
+  .list-item .note{font-size:0.86rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .list-item .date{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted); margin-top:2px;}
+  .badges{display:flex; gap:5px; margin-top:6px;}
+  .badge{
+    font-family:'IBM Plex Mono',monospace; font-size:0.62rem; padding:2px 6px; border-radius:3px;
+    border:1px solid var(--border); color:var(--text-muted-2);
+  }
+  .badge.done{background:rgba(122,155,126,0.18); color:var(--sage); border-color:rgba(122,155,126,0.4);}
+  .badge.due{background:rgba(232,163,61,0.18); color:var(--amber); border-color:rgba(232,163,61,0.45);}
+  .del-btn{background:none; border:none; color:var(--text-muted); font-size:1.1rem; padding:6px 8px; cursor:pointer;}
+
+  /* ---- Backup row ---- */
+  .backup-row{display:flex; gap:10px; margin:24px 0 6px;}
+  .backup-row .btn{font-size:0.85rem; padding:12px;}
+  .backup-note{font-size:0.74rem; color:var(--text-muted); text-align:center; line-height:1.5; margin:8px 4px 0;}
+
+  /* ---- FAB ---- */
+  .fab{
+    position:fixed; bottom:calc(26px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
+    width:64px; height:64px; border-radius:50%; background:var(--amber); color:var(--amber-ink);
+    border:none; font-size:2rem; line-height:1; box-shadow:0 10px 26px rgba(232,163,61,0.4);
+    cursor:pointer; z-index:20; display:flex; align-items:center; justify-content:center;
+    font-family:'Inter',sans-serif; font-weight:400;
+  }
+  .fab:active{transform:translateX(-50%) scale(0.94);}
+
+  /* ---- Modal ---- */
+  .modal{
+    position:fixed; inset:0; background:rgba(10,13,17,0.72); backdrop-filter:blur(3px);
+    display:flex; align-items:flex-end; z-index:50; opacity:1; transition:opacity .2s ease;
+  }
+  .modal.hidden{display:none;}
+  .sheet{
+    background:var(--bg-elevated); width:100%; max-width:560px; margin:0 auto;
+    border-radius:22px 22px 0 0; padding:22px 20px calc(28px + env(safe-area-inset-bottom)); max-height:92vh; overflow-y:auto;
+    box-shadow:0 -12px 40px rgba(0,0,0,0.4);
+  }
+  .sheet-handle{width:38px; height:4px; background:var(--border); border-radius:3px; margin:0 auto 16px;}
+  .sheet h2{font-size:1.3rem; margin-bottom:4px;}
+  .sheet .sub{font-size:0.85rem; color:var(--text-muted-2); margin-bottom:18px;}
+
+  .capture-zone{
+    border:2px dashed var(--border); border-radius:var(--radius); padding:28px 16px;
+    text-align:center; cursor:pointer; margin-bottom:10px; transition:border-color .15s;
+  }
+  .capture-zone:active{border-color:var(--amber);}
+  .capture-zone .glyph{font-size:2.2rem; margin-bottom:8px;}
+  .capture-zone p{color:var(--text-muted-2); font-size:0.9rem; margin:0;}
+  .pick-row{display:flex; gap:18px; justify-content:center; margin:0 0 14px;}
+  .pick-link{
+    background:none; border:none; color:var(--text-muted-2); font-family:'Inter',sans-serif;
+    font-size:0.84rem; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:3px;
+  }
+  .preview-wrap{margin-bottom:12px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border);}
+  .preview-wrap img{width:100%; display:block; max-height:340px; object-fit:contain; background:#000;}
+
+  .chip-row{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px;}
+  .chip{
+    padding:7px 13px; border-radius:999px; border:1px solid var(--border); background:transparent;
+    color:var(--text-muted-2); font-size:0.8rem; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .chip.selected{background:var(--rust); border-color:var(--rust); color:#FBEDE4;}
+
+  input[type=text]{
+    width:100%; padding:13px 14px; border-radius:11px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; font-size:0.95rem;
+    margin-bottom:16px;
+  }
+  input[type=text]::placeholder{color:var(--text-muted);}
+  input[type=text]:focus{outline:2px solid var(--amber); border-color:transparent;}
+
+  .btn-row{display:flex; gap:10px;}
+  .btn{
+    flex:1; padding:14px; border-radius:12px; border:none; font-family:'Inter',sans-serif;
+    font-size:0.95rem; font-weight:700; cursor:pointer;
+  }
+  .btn-primary{background:var(--amber); color:var(--amber-ink);}
+  .btn-primary:disabled{opacity:0.4; cursor:not-allowed;}
+  .btn-secondary{background:transparent; border:1px solid var(--border); color:var(--text-muted-2);}
+  .btn:focus-visible, .tab:focus-visible, .chip:focus-visible, .fab:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+
+  /* review/lightbox modal */
+  .view-photo{width:100%; border-radius:12px; margin-bottom:6px; max-height:52vh; object-fit:contain; background:#000; cursor:zoom-in;}
+  .zoom-hint{font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:var(--text-muted); text-align:center; margin:0 0 12px;}
+  .due-line{display:flex; align-items:center; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
+  .due-line .stamp{position:static; transform:rotate(-3deg);}
+  .due-line span{color:var(--text-muted-2); font-size:0.85rem;}
+  .due-line .learned-badge{
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem; font-weight:700; letter-spacing:0.05em;
+    background:rgba(122,155,126,0.18); color:var(--sage); border:1px solid rgba(122,155,126,0.4);
+    padding:4px 8px; border-radius:3px;
+  }
+
+  /* fullscreen photo zoom */
+  .lightbox{
+    position:fixed; inset:0; background:#000; z-index:70; overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .lightbox img{display:block; width:100%; margin:auto; min-height:100%; object-fit:contain;}
+  .lightbox img.zoomed{width:190%; max-width:none; min-height:0; object-fit:unset;}
+  .lightbox-close{
+    position:fixed; top:calc(12px + env(safe-area-inset-top)); right:14px; z-index:71;
+    width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.16);
+    color:#fff; font-size:1.15rem; cursor:pointer;
+  }
+
+  .toast{
+    position:fixed; bottom:calc(110px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:var(--sage);
+    color:#0F1A11; padding:11px 20px; border-radius:999px; font-weight:700; font-size:0.85rem;
+    box-shadow:var(--shadow); z-index:80; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    max-width:88vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+
+  @media (prefers-reduced-motion:reduce){
+    .card, .fab, .toast{transition:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>Hata Defteri</h1>
+    <p class="tagline">Yapamadığın soruyu çek, sistem sana ne zaman tekrar edeceğini söylesin.</p>
+  </div>
+
+  <div class="install-hint hidden" id="installHint">
+    <div>📲 <b>Uygulama olarak kur:</b> Safari'de alttaki <b>Paylaş</b> (kare + ok) düğmesine bas → <b>"Ana Ekrana Ekle"</b> seç. Böylece kendi simgesiyle, tam ekran ve internetsiz çalışır.</div>
+    <button class="dismiss" id="dismissHint" aria-label="Kapat">✕</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-view="today">Bugün <span class="count" id="countToday"></span></button>
+    <button class="tab" data-view="all">Tümü <span class="count" id="countAll"></span></button>
+  </div>
+
+  <main id="content"></main>
+</div>
+
+<button class="fab" id="fabAdd" aria-label="Yeni soru ekle">+</button>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="galleryInput" accept="image/*" style="display:none">
+<input type="file" id="importInput" accept=".json,application/json" style="display:none">
+
+<!-- ADD SHEET -->
+<div class="modal hidden" id="addModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Yeni Soru Ekle</h2>
+    <p class="sub">Fotoğrafı çek, istersen dersini seç, kaydet. Tekrar tarihleri (+1 / +7 / +30 gün) otomatik hesaplanır.</p>
+
+    <div class="capture-zone" id="captureZone">
+      <div class="glyph">📷</div>
+      <p>Fotoğraf çekmek için dokun</p>
+    </div>
+    <div class="preview-wrap hidden" id="previewWrap">
+      <img id="previewImg" alt="Çekilen soru önizlemesi">
+    </div>
+    <div class="pick-row">
+      <button class="pick-link hidden" id="retakeBtn">↻ Yeniden çek</button>
+      <button class="pick-link" id="galleryBtn">🖼 Galeriden seç</button>
+    </div>
+
+    <div class="chip-row" id="subjectChips">
+      <button class="chip" data-subj="Matematik">Matematik</button>
+      <button class="chip" data-subj="Fizik">Fizik</button>
+      <button class="chip" data-subj="Kimya">Kimya</button>
+      <button class="chip" data-subj="Biyoloji">Biyoloji</button>
+      <button class="chip" data-subj="Türkçe">Türkçe</button>
+      <button class="chip" data-subj="Sosyal">Sosyal</button>
+    </div>
+    <input type="text" id="noteInput" placeholder="Konu (opsiyonel) — örn. Türev - artan azalan">
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="cancelAdd">Vazgeç</button>
+      <button class="btn btn-primary" id="saveAdd" disabled>Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW / REVIEW SHEET -->
+<div class="modal hidden" id="viewModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <img class="view-photo" id="viewPhoto" alt="Soru fotoğrafı">
+    <p class="zoom-hint">büyütmek için fotoğrafa dokun</p>
+    <div class="due-line" id="viewDueLine"></div>
+    <p class="sub" id="viewNote" style="margin-top:-10px;"></p>
+    <div class="btn-row" id="viewActions"></div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-secondary" id="closeView">Kapat</button>
+      <button class="btn btn-secondary" id="deleteEntry" style="color:var(--rust);">Sil</button>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN PHOTO -->
+<div class="lightbox hidden" id="lightbox">
+  <img id="lightboxImg" alt="Soru fotoğrafı (tam ekran)">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Kapat">✕</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- date helpers ----------
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function addDays(dateStr, n){
+    const [y,m,d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m-1, d);
+    dt.setDate(dt.getDate()+n);
+    return dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0") + "-" + String(dt.getDate()).padStart(2,"0");
+  }
+  function displayDate(dateStr){
+    const [y,m,d] = dateStr.split("-");
+    const aylar = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+    return d + " " + aylar[parseInt(m,10)-1] + " " + y;
+  }
+
+  // ---------- storage: IndexedDB (works offline, survives app restarts on iOS) ----------
+  let db = null;
+
+  function openDB(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open("hataDefteri", 1);
+      req.onupgradeneeded = function(e){
+        const d = e.target.result;
+        if(!d.objectStoreNames.contains("kv")) d.createObjectStore("kv");
+      };
+      req.onsuccess = function(){ db = req.result; resolve(); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  }
+  function kvGet(key){
+    return new Promise((resolve, reject)=>{
+      const r = db.transaction("kv").objectStore("kv").get(key);
+      r.onsuccess = ()=> resolve(r.result === undefined ? null : r.result);
+      r.onerror = ()=> reject(r.error);
+    });
+  }
+  function kvSet(key, val){
+    return new Promise((resolve, reject)=>{
+      const t = db.transaction("kv", "readwrite");
+      t.objectStore("kv").put(val, key);
+      t.oncomplete = ()=> resolve(true);
+      t.onerror = ()=> reject(t.error);
+    });
+  }
+  function kvDel(key){
+    return new Promise((resolve)=>{
+      const t = db.transaction("kv", "readwrite");
+      t.objectStore("kv").delete(key);
+      t.oncomplete = ()=> resolve(true);
+      t.onerror = ()=> resolve(false);
+    });
+  }
+
+  async function loadIndex(){
+    try{ const v = await kvGet("hata_index"); return Array.isArray(v) ? v : []; }
+    catch(e){ return []; }
+  }
+  async function saveIndex(list){
+    try{ await kvSet("hata_index", list); return true; }
+    catch(e){ return false; }
+  }
+  async function loadPhoto(id){
+    try{ return await kvGet("hata_photo_" + id); }
+    catch(e){ return null; }
+  }
+  async function savePhoto(id, dataUrl){
+    try{ await kvSet("hata_photo_" + id, dataUrl); return true; }
+    catch(e){ return false; }
+  }
+  async function deletePhotoKey(id){
+    await kvDel("hata_photo_" + id);
+  }
+
+  // ---------- image compression ----------
+  function compressImage(file, maxWidth, quality){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = function(e){
+        const img = new Image();
+        img.onload = function(){
+          let w = img.width, h = img.height;
+          if(w > maxWidth){ h = Math.round(h * (maxWidth / w)); w = maxWidth; }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ---------- state ----------
+  let INDEX = [];
+  let currentView = "today";
+  let pendingImage = null;
+  let pendingSubject = "";
+  let activeEntryId = null;
+  let activeInterval = null;
+
+  const contentEl = document.getElementById("content");
+  const toastEl = document.getElementById("toast");
+
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    setTimeout(()=>toastEl.classList.remove("show"), 2200);
+  }
+
+  function isLearned(entry){
+    return entry.done.d1 && entry.done.d7 && entry.done.d30;
+  }
+
+  function dueListToday(){
+    const today = todayStr();
+    const out = [];
+    INDEX.forEach(entry=>{
+      ["d1","d7","d30"].forEach(k=>{
+        if(entry.due[k] <= today && !entry.done[k]){
+          out.push({entry, interval:k, overdue: entry.due[k] < today});
+        }
+      });
+    });
+    out.sort((a,b)=> a.entry.due[a.interval] < b.entry.due[b.interval] ? -1 : 1);
+    return out;
+  }
+
+  function nextDueInfo(){
+    const today = todayStr();
+    let best = null;
+    INDEX.forEach(entry=>{
+      ["d1","d7","d30"].forEach(k=>{
+        if(!entry.done[k] && entry.due[k] > today){
+          if(!best || entry.due[k] < best) best = entry.due[k];
+        }
+      });
+    });
+    return best;
+  }
+
+  const intervalLabel = {d1:"TEKRAR 1 · 1 GÜN", d7:"TEKRAR 2 · 7 GÜN", d30:"TEKRAR 3 · 30 GÜN"};
+  const intervalShort = {d1:"1G", d7:"7G", d30:"30G"};
+
+  function updateCounts(){
+    document.getElementById("countToday").textContent = dueListToday().length || "";
+    document.getElementById("countAll").textContent = INDEX.length || "";
+  }
+
+  function updateBadge(){
+    try{
+      if("setAppBadge" in navigator){
+        const n = dueListToday().length;
+        const p = n ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+        if(p && p.catch) p.catch(function(){});
+      }
+    }catch(e){}
+  }
+
+  // ---------- celebration ----------
+  function burst(){
+    const emo = ["💜","✨","🎉","⭐️","💫"];
+    for(let i=0;i<26;i++){
+      const s = document.createElement("span");
+      s.textContent = emo[i % emo.length];
+      s.style.cssText = "position:fixed;left:"+(8+Math.random()*84)+"vw;top:"+(35+Math.random()*30)+"vh;font-size:"+(16+Math.random()*20)+"px;z-index:90;pointer-events:none;";
+      document.body.appendChild(s);
+      const dx = (Math.random()-0.5)*180, dy = -(130+Math.random()*240);
+      const anim = s.animate(
+        [{transform:"translate(0,0) rotate(0deg)", opacity:1},
+         {transform:"translate("+dx+"px,"+dy+"px) rotate("+((Math.random()-0.5)*140)+"deg)", opacity:0}],
+        {duration:1000+Math.random()*700, easing:"ease-out"}
+      );
+      anim.onfinish = function(){ s.remove(); };
+    }
+  }
+
+  // ---------- rendering ----------
+  async function render(){
+    updateCounts();
+    updateBadge();
+    if(currentView === "today") await renderToday();
+    else await renderAll();
+  }
+
+  async function renderToday(){
+    const due = dueListToday();
+    if(due.length === 0){
+      const next = nextDueInfo();
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">🌤️</div><h2>Bugün için tekrar yok</h2>'+
+        '<p>Yeni bir soru eklemek için aşağıdaki + butonuna dokun'+(INDEX.length? ', ya da sıradaki tekrarı bekle.' : '.')+'</p>'+
+        (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
+        '</div>';
+      return;
+    }
+    contentEl.innerHTML = '<div class="section-label">Bugün gözden geçir</div><div class="grid" id="todayGrid"></div>';
+    const grid = document.getElementById("todayGrid");
+    for(const item of due){
+      const photo = await loadPhoto(item.entry.id);
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML =
+        '<img class="thumb" src="'+(photo||"")+'" alt="Soru fotoğrafı">'+
+        '<span class="stamp'+(item.overdue?" overdue":"")+'">'+intervalShort[item.interval]+(item.overdue?" · GECİKTİ":"")+'</span>'+
+        '<div class="meta"><div class="note">'+escapeHtml(item.entry.note || "Not eklenmedi")+'</div>'+
+        '<div class="date">'+displayDate(item.entry.dateCaptured)+'</div></div>';
+      card.addEventListener("click", ()=> openView(item.entry.id, item.interval));
+      grid.appendChild(card);
+    }
+  }
+
+  async function renderAll(){
+    if(INDEX.length === 0){
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">🗂️</div><h2>Henüz soru eklenmedi</h2>'+
+        '<p>Çözemediğin ilk soruyu + butonuyla ekleyerek başla.</p></div>';
+      renderBackupRow();
+      return;
+    }
+    const learnedCount = INDEX.filter(isLearned).length;
+    const sorted = [...INDEX].sort((a,b)=> a.dateCaptured < b.dateCaptured ? 1 : -1);
+    contentEl.innerHTML =
+      '<div class="section-label">Tüm kayıtlar — '+INDEX.length+' soru'+(learnedCount? ' · '+learnedCount+' öğrenildi 🎉':'')+'</div>'+
+      '<div id="allList"></div>';
+    const list = document.getElementById("allList");
+    const today = todayStr();
+    for(const entry of sorted){
+      const photo = await loadPhoto(entry.id);
+      const row = document.createElement("div");
+      row.className = "list-item";
+      function badgeHtml(k){
+        if(entry.done[k]) return '<span class="badge done">'+intervalShort[k]+' ✓</span>';
+        if(entry.due[k] <= today) return '<span class="badge due">'+intervalShort[k]+' bugün</span>';
+        return '<span class="badge">'+intervalShort[k]+' · '+displayDate(entry.due[k])+'</span>';
+      }
+      row.innerHTML =
+        '<img class="thumb-sm" src="'+(photo||"")+'" alt="">'+
+        '<div class="info"><div class="note">'+escapeHtml(entry.note||"Not eklenmedi")+'</div>'+
+        '<div class="date">'+displayDate(entry.dateCaptured)+'</div>'+
+        '<div class="badges">'+badgeHtml("d1")+badgeHtml("d7")+badgeHtml("d30")+'</div></div>'+
+        '<button class="del-btn" aria-label="Sil">✕</button>';
+      row.querySelector(".info").addEventListener("click", ()=> openView(entry.id, null));
+      row.querySelector(".thumb-sm").addEventListener("click", ()=> openView(entry.id, null));
+      row.querySelector(".del-btn").addEventListener("click", (e)=>{ e.stopPropagation(); removeEntry(entry.id); });
+      list.appendChild(row);
+    }
+    renderBackupRow();
+  }
+
+  function renderBackupRow(){
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      '<div class="backup-row">'+
+      '<button class="btn btn-secondary" id="exportBtn">📦 Yedek Al</button>'+
+      '<button class="btn btn-secondary" id="importBtn">📥 Yedek Yükle</button>'+
+      '</div>'+
+      '<p class="backup-note">Fotoğraflar sadece bu telefonda saklanır. Arada bir yedek alıp dosyayı iCloud / Dosyalar\'a kaydetmen güvenli olur. 💛</p>';
+    contentEl.appendChild(wrap);
+    document.getElementById("exportBtn").addEventListener("click", exportBackup);
+    document.getElementById("importBtn").addEventListener("click", ()=> importInput.click());
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ---------- view/review modal ----------
+  async function openView(id, interval){
+    const entry = INDEX.find(e=>e.id===id);
+    if(!entry) return;
+    activeEntryId = id;
+    const photo = await loadPhoto(id);
+    document.getElementById("viewPhoto").src = photo || "";
+    document.getElementById("viewNote").textContent = entry.note || "Not eklenmedi";
+    const today = todayStr();
+
+    // hangi tekrar işlenecek: karttan gelen, yoksa vadesi gelmiş en erken tekrar
+    let k = interval || null;
+    if(!k){
+      for(const key of ["d1","d7","d30"]){
+        if(!entry.done[key] && entry.due[key] <= today){ k = key; break; }
+      }
+    }
+    activeInterval = k;
+
+    const dueLine = document.getElementById("viewDueLine");
+    const actionsEl = document.getElementById("viewActions");
+    actionsEl.innerHTML = "";
+
+    if(k){
+      const overdue = entry.due[k] < today;
+      dueLine.innerHTML =
+        '<span class="stamp'+(overdue?" overdue":"")+'">'+intervalShort[k]+'</span>'+
+        '<span>'+intervalLabel[k]+' — önce çözmeyi dene, sonra işaretle</span>';
+      const failBtn = document.createElement("button");
+      failBtn.className = "btn btn-secondary";
+      failBtn.textContent = "Çözemedim ✗";
+      failBtn.addEventListener("click", ()=> postponeInterval(id, k));
+      const okBtn = document.createElement("button");
+      okBtn.className = "btn btn-primary";
+      okBtn.textContent = "Doğru çözdüm ✓";
+      okBtn.addEventListener("click", ()=> completeInterval(id, k));
+      actionsEl.appendChild(failBtn);
+      actionsEl.appendChild(okBtn);
+    } else if(isLearned(entry)){
+      dueLine.innerHTML = '<span class="learned-badge">ÖĞRENİLDİ ✓</span><span>Üç tekrar da tamamlandı. Bu soru artık senin! 🎉</span>';
+    } else {
+      let next = null;
+      ["d1","d7","d30"].forEach(key=>{
+        if(!entry.done[key] && (!next || entry.due[key] < entry.due[next])) next = key;
+      });
+      dueLine.innerHTML = '<span>Sıradaki tekrar: '+intervalShort[next]+' · '+displayDate(entry.due[next])+'</span>';
+    }
+    document.getElementById("viewModal").classList.remove("hidden");
+  }
+  function closeViewModal(){
+    document.getElementById("viewModal").classList.add("hidden");
+    activeEntryId = null; activeInterval = null;
+  }
+
+  async function completeInterval(id, k){
+    const entry = INDEX.find(e=>e.id===id);
+    if(!entry) return;
+    entry.done[k] = true;
+    await saveIndex(INDEX);
+    closeViewModal();
+    if(isLearned(entry)){
+      showToast("🎉 Bu soru artık öğrenildi! Harikasın 💜");
+      burst();
+    }else{
+      showToast("Tekrar tamamlandı ✓");
+    }
+    render();
+  }
+
+  async function postponeInterval(id, k){
+    const entry = INDEX.find(e=>e.id===id);
+    if(!entry) return;
+    entry.due[k] = addDays(todayStr(), 1);
+    entry.fails = (entry.fails || 0) + 1;
+    await saveIndex(INDEX);
+    closeViewModal();
+    showToast("Sorun değil — yarın tekrar karşına çıkacak 💪");
+    render();
+  }
+
+  async function removeEntry(id){
+    if(!window.confirm("Bu soru ve fotoğrafı silinsin mi?")) return;
+    INDEX = INDEX.filter(e=>e.id!==id);
+    await saveIndex(INDEX);
+    await deletePhotoKey(id);
+    showToast("Kayıt silindi");
+    closeViewModal();
+    render();
+  }
+
+  // ---------- fullscreen photo ----------
+  const lightbox = document.getElementById("lightbox");
+  const lightboxImg = document.getElementById("lightboxImg");
+  document.getElementById("viewPhoto").addEventListener("click", function(){
+    if(!this.src) return;
+    lightboxImg.src = this.src;
+    lightboxImg.classList.remove("zoomed");
+    lightbox.classList.remove("hidden");
+    document.body.classList.add("no-scroll");
+  });
+  lightboxImg.addEventListener("click", function(){
+    this.classList.toggle("zoomed");
+  });
+  document.getElementById("lightboxClose").addEventListener("click", function(){
+    lightbox.classList.add("hidden");
+    document.body.classList.remove("no-scroll");
+  });
+
+  // ---------- add flow ----------
+  const addModal = document.getElementById("addModal");
+  const captureZone = document.getElementById("captureZone");
+  const cameraInput = document.getElementById("cameraInput");
+  const galleryInput = document.getElementById("galleryInput");
+  const importInput = document.getElementById("importInput");
+  const previewWrap = document.getElementById("previewWrap");
+  const previewImg = document.getElementById("previewImg");
+  const retakeBtn = document.getElementById("retakeBtn");
+  const saveAddBtn = document.getElementById("saveAdd");
+  const noteInput = document.getElementById("noteInput");
+
+  function openAddModal(){
+    pendingImage = null; pendingSubject = "";
+    previewWrap.classList.add("hidden");
+    retakeBtn.classList.add("hidden");
+    captureZone.classList.remove("hidden");
+    noteInput.value = "";
+    saveAddBtn.disabled = true;
+    document.querySelectorAll("#subjectChips .chip").forEach(c=>c.classList.remove("selected"));
+    addModal.classList.remove("hidden");
+  }
+  function closeAddModal(){ addModal.classList.add("hidden"); }
+
+  async function handlePickedFile(input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    try{
+      const compressed = await compressImage(file, 1100, 0.7);
+      pendingImage = compressed;
+      previewImg.src = compressed;
+      previewWrap.classList.remove("hidden");
+      captureZone.classList.add("hidden");
+      retakeBtn.classList.remove("hidden");
+      saveAddBtn.disabled = false;
+    }catch(e){
+      showToast("Fotoğraf işlenemedi, tekrar dene");
+    }
+    input.value = "";
+  }
+
+  captureZone.addEventListener("click", ()=> cameraInput.click());
+  retakeBtn.addEventListener("click", ()=> cameraInput.click());
+  document.getElementById("galleryBtn").addEventListener("click", ()=> galleryInput.click());
+  cameraInput.addEventListener("change", ()=> handlePickedFile(cameraInput));
+  galleryInput.addEventListener("change", ()=> handlePickedFile(galleryInput));
+
+  document.getElementById("subjectChips").addEventListener("click", function(e){
+    const chip = e.target.closest(".chip");
+    if(!chip) return;
+    document.querySelectorAll("#subjectChips .chip").forEach(c=>c.classList.remove("selected"));
+    chip.classList.add("selected");
+    pendingSubject = chip.dataset.subj;
+    if(!noteInput.value) noteInput.value = pendingSubject + " - ";
+  });
+
+  document.getElementById("cancelAdd").addEventListener("click", closeAddModal);
+
+  saveAddBtn.addEventListener("click", async function(){
+    if(!pendingImage) return;
+    saveAddBtn.disabled = true;
+    saveAddBtn.textContent = "Kaydediliyor...";
+    const id = "e" + Date.now() + Math.floor(Math.random()*1000);
+    const today = todayStr();
+    const entry = {
+      id: id,
+      dateCaptured: today,
+      note: noteInput.value.trim(),
+      due: { d1: addDays(today,1), d7: addDays(today,7), d30: addDays(today,30) },
+      done: { d1:false, d7:false, d30:false }
+    };
+    const photoOk = await savePhoto(id, pendingImage);
+    INDEX.push(entry);
+    const idxOk = await saveIndex(INDEX);
+    saveAddBtn.textContent = "Kaydet";
+    if(photoOk && idxOk){
+      showToast("Kaydedildi — ilk tekrar " + displayDate(entry.due.d1));
+      closeAddModal();
+      currentView = "today";
+      document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.view==="today"));
+      render();
+    }else{
+      INDEX = INDEX.filter(e2=>e2.id!==id);
+      await deletePhotoKey(id);
+      showToast("Kaydedilemedi, tekrar dene");
+      saveAddBtn.disabled = false;
+    }
+  });
+
+  // ---------- backup / restore ----------
+  async function exportBackup(){
+    try{
+      const photos = {};
+      for(const e of INDEX){
+        const p = await loadPhoto(e.id);
+        if(p) photos[e.id] = p;
+      }
+      const data = { app:"hata-defteri", version:1, exportedAt:new Date().toISOString(), index:INDEX, photos:photos };
+      const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "hata-defteri-yedek-" + todayStr() + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=> URL.revokeObjectURL(a.href), 5000);
+      showToast("Yedek hazır — Dosyalar'a kaydet 📦");
+    }catch(e){
+      showToast("Yedek alınamadı");
+    }
+  }
+
+  async function importBackup(file){
+    try{
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if(!data || !Array.isArray(data.index)) throw new Error("bad");
+      let count = 0;
+      for(const entry of data.index){
+        if(!entry || !entry.id || !entry.due || !entry.done) continue;
+        const existing = INDEX.find(e=>e.id===entry.id);
+        if(existing) Object.assign(existing, entry);
+        else INDEX.push(entry);
+        const p = data.photos && data.photos[entry.id];
+        if(p) await savePhoto(entry.id, p);
+        count++;
+      }
+      await saveIndex(INDEX);
+      showToast(count + " kayıt geri yüklendi ✓");
+      render();
+    }catch(e){
+      showToast("Yedek dosyası okunamadı");
+    }
+  }
+  importInput.addEventListener("change", function(){
+    const f = importInput.files && importInput.files[0];
+    if(f) importBackup(f);
+    importInput.value = "";
+  });
+
+  // ---------- misc wiring ----------
+  document.getElementById("fabAdd").addEventListener("click", openAddModal);
+  document.getElementById("closeView").addEventListener("click", closeViewModal);
+  document.getElementById("deleteEntry").addEventListener("click", function(){
+    if(activeEntryId) removeEntry(activeEntryId);
+  });
+
+  document.querySelectorAll(".tab").forEach(tab=>{
+    tab.addEventListener("click", function(){
+      document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+      tab.classList.add("active");
+      currentView = tab.dataset.view;
+      render();
+    });
+  });
+
+  // gün değişince (uygulama açık kalmışsa) listeyi tazele
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden && db) render();
+  });
+
+  // ---------- install hint (Safari'de açıldıysa göster) ----------
+  function setupInstallHint(){
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const standalone = (navigator.standalone === true) ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    let dismissed = false;
+    try{ dismissed = localStorage.getItem("hd_installHintDismissed") === "1"; }catch(e){}
+    if(isIOS && !standalone && !dismissed){
+      document.getElementById("installHint").classList.remove("hidden");
+    }
+    document.getElementById("dismissHint").addEventListener("click", function(){
+      document.getElementById("installHint").classList.add("hidden");
+      try{ localStorage.setItem("hd_installHintDismissed", "1"); }catch(e){}
+    });
+  }
+
+  // ---------- init ----------
+  (async function init(){
+    try{
+      await openDB();
+    }catch(e){
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">⚠️</div><h2>Depolama açılamadı</h2>'+
+        '<p>Safari gizli sekmede olabilirsin. Normal sekmede ya da ana ekrana eklenmiş uygulamadan aç.</p></div>';
+      return;
+    }
+    try{
+      if(navigator.storage && navigator.storage.persist){
+        navigator.storage.persist().catch(function(){});
+      }
+    }catch(e){}
+    INDEX = await loadIndex();
+    render();
+    setupInstallHint();
+    if("serviceWorker" in navigator && location.protocol.indexOf("http") === 0){
+      navigator.serviceWorker.register("./sw.js").catch(function(){});
+    }
+  })();
+})();
+</script>
+</body>
+</html>
