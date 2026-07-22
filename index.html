@@ -318,6 +318,9 @@
     background:var(--amber); box-shadow:0 4px 18px rgba(0,0,0,0.5); cursor:pointer;
   }
   .qcam-shutter:active{transform:scale(0.92);}
+  .qcam-shutter.dim{opacity:0.45;}
+  .qcam-subjects.attn{animation:qpulse .5s ease 2;}
+  @keyframes qpulse{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}
   .qcam-count{
     position:absolute; left:24px; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:0.82rem;
     background:rgba(0,0,0,0.45); padding:6px 11px; border-radius:999px;
@@ -441,7 +444,7 @@
     <button class="qcam-close" id="qcamClose" aria-label="Kapat">✕</button>
     <div class="qcam-subjects" id="qcamSubjects"></div>
   </div>
-  <p class="qcam-tip">Soruyu yatay çerçeveye sığdır ve çek — her çekim otomatik eklenir. Yükseklik ⇕ ile ayarlanır.</p>
+  <p class="qcam-tip" id="qcamTip">Soruyu yatay çerçeveye sığdır ve çek — her çekim otomatik eklenir. Yükseklik ⇕ ile ayarlanır.</p>
   <div class="qcam-bottom">
     <div class="qcam-count" id="qcamCount"></div>
     <button class="qcam-shutter" id="qcamShutter" aria-label="Çek"></button>
@@ -1301,16 +1304,27 @@
       const b = document.createElement("button");
       b.className = "chip"; b.textContent = s;
       b.addEventListener("click", function(){
-        if(qcamSubject === s){
-          qcamSubject = ""; b.classList.remove("selected"); return;
-        }
         qcamSubject = s;
         wrap.querySelectorAll(".chip").forEach(c=>c.classList.remove("selected"));
         b.classList.add("selected");
+        updateQcamReady();
       });
       wrap.appendChild(b);
     });
   })();
+
+  // ders seçilmeden çekime izin verme
+  function updateQcamReady(){
+    const tip = document.getElementById("qcamTip");
+    const sh = document.getElementById("qcamShutter");
+    if(!qcamSubject){
+      if(tip) tip.textContent = "👆 Önce üstten ders seç — sonra soruyu çerçeveye alıp çek";
+      if(sh) sh.classList.add("dim");
+    }else{
+      if(tip) tip.textContent = "Ders: " + qcamSubject + " · Soruyu çerçeveye sığdır ve çek — her çekim otomatik eklenir";
+      if(sh) sh.classList.remove("dim");
+    }
+  }
 
   function applyFrameSize(){
     const w = Math.round(window.innerWidth * 0.94);
@@ -1328,6 +1342,10 @@
     updateQcamCount();
     qcamUndoBtn.classList.add("hidden");
     document.getElementById("qcamError").classList.add("hidden");
+    // her açılışta ders bilinçli olarak yeniden seçilsin
+    qcamSubject = "";
+    document.getElementById("qcamSubjects").querySelectorAll(".chip").forEach(function(c){ c.classList.remove("selected"); });
+    updateQcamReady();
     qcamEl.classList.remove("hidden");
     document.body.classList.add("no-scroll");
     applyFrameSize();
@@ -1395,6 +1413,12 @@
 
   document.getElementById("qcamShutter").addEventListener("click", function(){
     if(!qcamStream) return;
+    if(!qcamSubject){
+      showToast("Önce üstten ders seç 👆");
+      const w = document.getElementById("qcamSubjects");
+      w.classList.remove("attn"); void w.offsetWidth; w.classList.add("attn");
+      return;
+    }
     const vw = qcamVideo.videoWidth, vh = qcamVideo.videoHeight;
     if(!vw || !vh) return;
     // ekrandaki çerçeveyi, cover ile ölçeklenmiş video karesindeki bölgeye çevir
