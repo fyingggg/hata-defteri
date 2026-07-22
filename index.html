@@ -256,6 +256,65 @@
   .crop-tip{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted-2); text-align:center; margin:10px 0;}
   .crop-bar{display:flex; gap:10px;}
 
+  /* hızlı seri çekim */
+  .quick-zone{
+    width:100%; padding:14px 16px; border-radius:var(--radius); margin-bottom:10px;
+    background:rgba(232,163,61,0.10); border:1px solid rgba(232,163,61,0.45);
+    color:var(--text); font-family:'Inter',sans-serif; font-size:0.86rem; line-height:1.45;
+    text-align:left; cursor:pointer;
+  }
+  .quick-zone b{color:var(--amber);}
+  .qcam{position:fixed; inset:0; background:#000; z-index:74;}
+  .qcam video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .qcam-frame{
+    position:absolute; top:50%; transform:translateY(-50%); border-radius:4px;
+    border:1.5px solid var(--amber); box-shadow:0 0 0 200vmax rgba(8,10,13,0.5); z-index:2;
+  }
+  .qcam-handle{
+    position:absolute; left:50%; bottom:-23px; transform:translateX(-50%);
+    width:44px; height:44px; border-radius:50%; background:var(--amber); color:var(--amber-ink);
+    border:none; display:flex; align-items:center; justify-content:center; font-size:1.15rem;
+    touch-action:none; box-shadow:0 3px 10px rgba(0,0,0,0.4); cursor:ns-resize;
+  }
+  .qcam-top{
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); left:12px; right:12px;
+    display:flex; gap:10px; align-items:center; z-index:6;
+  }
+  .qcam-close{width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.18); color:#fff; font-size:1.05rem; flex-shrink:0; cursor:pointer;}
+  .qcam-subjects{display:flex; gap:6px; overflow-x:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:2px;}
+  .qcam-subjects .chip{flex-shrink:0; background:rgba(0,0,0,0.35); border-color:rgba(255,255,255,0.3); color:#eee;}
+  .qcam-subjects .chip.selected{background:var(--rust); border-color:var(--rust); color:#FBEDE4;}
+  .qcam-tip{
+    position:absolute; left:0; right:0; bottom:calc(120px + env(safe-area-inset-bottom));
+    text-align:center; color:rgba(255,255,255,0.88); font-size:0.7rem; font-family:'IBM Plex Mono',monospace;
+    z-index:3; text-shadow:0 1px 3px rgba(0,0,0,0.8); padding:0 24px; margin:0;
+  }
+  .qcam-bottom{
+    position:absolute; left:0; right:0; bottom:calc(22px + env(safe-area-inset-bottom));
+    display:flex; align-items:center; justify-content:center; z-index:3;
+  }
+  .qcam-shutter{
+    width:74px; height:74px; border-radius:50%; border:5px solid #fff;
+    background:var(--amber); box-shadow:0 4px 18px rgba(0,0,0,0.5); cursor:pointer;
+  }
+  .qcam-shutter:active{transform:scale(0.92);}
+  .qcam-count{
+    position:absolute; left:24px; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:0.82rem;
+    background:rgba(0,0,0,0.45); padding:6px 11px; border-radius:999px;
+  }
+  .qcam-count:empty{display:none;}
+  .qcam-undo{
+    position:absolute; right:18px; background:rgba(0,0,0,0.45); border:none; color:#fff;
+    font-size:0.78rem; padding:8px 12px; border-radius:999px; font-family:'Inter',sans-serif; cursor:pointer;
+  }
+  .qcam-flash{position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:5; transition:opacity .2s;}
+  .qcam-flash.on{opacity:0.65; transition:none;}
+  .qcam-error{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; color:#eee; z-index:4; background:#0B0F14; padding:30px; text-align:center;
+    font-size:0.9rem; line-height:1.55;
+  }
+
   .toast{
     position:fixed; bottom:calc(110px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:var(--sage);
     color:#0F1A11; padding:11px 20px; border-radius:999px; font-weight:700; font-size:0.85rem;
@@ -302,6 +361,8 @@
     <h2>Yeni Soru Ekle</h2>
     <p class="sub">Fotoğrafı çek, istersen dersini seç, kaydet. Tekrar tarihleri (+1 / +7 / +30 gün) otomatik hesaplanır.</p>
 
+    <button class="quick-zone" id="quickBtn">⚡ <b>Seri Çekim</b> — sabit yatay çerçeveyle art arda çek; her çekim kırpmasız, otomatik soru olarak eklenir</button>
+
     <div class="capture-zone" id="captureZone">
       <div class="glyph">📷</div>
       <p>Fotoğraf çekmek için dokun</p>
@@ -346,6 +407,27 @@
       <button class="btn btn-secondary" id="deleteEntry" style="color:var(--rust);">Sil</button>
     </div>
   </div>
+</div>
+
+<!-- QUICK CAPTURE -->
+<div class="qcam hidden" id="qcam">
+  <video id="qcamVideo" autoplay playsinline muted></video>
+  <div class="qcam-frame" id="qcamFrame">
+    <div class="crop-grid"></div>
+    <button class="qcam-handle" id="qcamHandle" aria-label="Çerçeve yüksekliğini ayarla">⇕</button>
+  </div>
+  <div class="qcam-top">
+    <button class="qcam-close" id="qcamClose" aria-label="Kapat">✕</button>
+    <div class="qcam-subjects" id="qcamSubjects"></div>
+  </div>
+  <p class="qcam-tip">Soruyu yatay çerçeveye sığdır ve çek — her çekim otomatik eklenir. Yükseklik ⇕ ile ayarlanır.</p>
+  <div class="qcam-bottom">
+    <div class="qcam-count" id="qcamCount"></div>
+    <button class="qcam-shutter" id="qcamShutter" aria-label="Çek"></button>
+    <button class="qcam-undo hidden" id="qcamUndo">↩︎ Geri al</button>
+  </div>
+  <div class="qcam-flash" id="qcamFlash"></div>
+  <div class="qcam-error hidden" id="qcamError"></div>
 </div>
 
 <!-- CROP OVERLAY -->
@@ -996,6 +1078,184 @@
       if(cropCb) cropCb(result);
     };
     img.src = cropSrc;
+  });
+
+  // ---------- hızlı seri çekim ----------
+  const qcamEl = document.getElementById("qcam");
+  const qcamVideo = document.getElementById("qcamVideo");
+  const qcamFrame = document.getElementById("qcamFrame");
+  const qcamCount = document.getElementById("qcamCount");
+  const qcamUndoBtn = document.getElementById("qcamUndo");
+  const QSUBJECTS = ["Matematik","Fizik","Kimya","Biyoloji","Türkçe","Sosyal"];
+  let qcamStream = null, qcamSubject = "", qcamAdded = [];
+
+  (function buildQcamChips(){
+    const wrap = document.getElementById("qcamSubjects");
+    QSUBJECTS.forEach(function(s){
+      const b = document.createElement("button");
+      b.className = "chip"; b.textContent = s;
+      b.addEventListener("click", function(){
+        if(qcamSubject === s){
+          qcamSubject = ""; b.classList.remove("selected"); return;
+        }
+        qcamSubject = s;
+        wrap.querySelectorAll(".chip").forEach(c=>c.classList.remove("selected"));
+        b.classList.add("selected");
+      });
+      wrap.appendChild(b);
+    });
+  })();
+
+  function applyFrameSize(){
+    const w = Math.round(window.innerWidth * 0.94);
+    let h = 0;
+    try{ h = parseFloat(localStorage.getItem("hd_qcamFrameH")) || 0; }catch(e){}
+    if(!h || h < 90) h = Math.round(w * 9 / 16);
+    h = Math.min(h, Math.round(window.innerHeight * 0.6));
+    qcamFrame.style.width = w + "px";
+    qcamFrame.style.left = Math.round((window.innerWidth - w) / 2) + "px";
+    qcamFrame.style.height = h + "px";
+  }
+
+  async function openQcam(){
+    qcamAdded = [];
+    updateQcamCount();
+    qcamUndoBtn.classList.add("hidden");
+    document.getElementById("qcamError").classList.add("hidden");
+    qcamEl.classList.remove("hidden");
+    document.body.classList.add("no-scroll");
+    applyFrameSize();
+    try{
+      qcamStream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:"environment", width:{ideal:3840}, height:{ideal:2160} },
+        audio:false
+      });
+      qcamVideo.srcObject = qcamStream;
+      const p = qcamVideo.play(); if(p && p.catch) p.catch(function(){});
+    }catch(e){
+      const err = document.getElementById("qcamError");
+      err.innerHTML = '<div style="font-size:2.2rem;">📷</div>'+
+        '<b>Kameraya erişilemedi</b>'+
+        '<span>Kamera izni gerekiyor: iPhone\'da Ayarlar → Hata Defteri → Kamera. İstersen ✕ ile kapatıp normal "Fotoğraf çek" yolunu kullan.</span>';
+      err.classList.remove("hidden");
+    }
+  }
+
+  function closeQcam(){
+    if(qcamStream){ qcamStream.getTracks().forEach(function(t){ t.stop(); }); qcamStream = null; }
+    qcamVideo.srcObject = null;
+    qcamEl.classList.add("hidden");
+    document.body.classList.remove("no-scroll");
+    if(qcamAdded.length){
+      showToast(qcamAdded.length + " soru eklendi 🎉 İlk tekrarları yarın");
+      currentView = "all";
+      document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.view==="all"));
+      render();
+    }
+  }
+
+  function updateQcamCount(){
+    qcamCount.textContent = qcamAdded.length ? (qcamAdded.length + " eklendi") : "";
+  }
+
+  function qcamFlash(){
+    const f = document.getElementById("qcamFlash");
+    f.classList.add("on");
+    setTimeout(function(){ f.classList.remove("on"); }, 130);
+  }
+
+  async function addQuickEntry(dataUrl){
+    const id = "e" + Date.now() + Math.floor(Math.random()*1000);
+    const today = todayStr();
+    const entry = {
+      id: id, dateCaptured: today, note: qcamSubject || "",
+      due: { d1: addDays(today,1), d7: addDays(today,7), d30: addDays(today,30) },
+      done: { d1:false, d7:false, d30:false }
+    };
+    const photoOk = await savePhoto(id, dataUrl);
+    INDEX.push(entry);
+    const idxOk = await saveIndex(INDEX);
+    if(photoOk && idxOk){
+      qcamAdded.push(id);
+      updateQcamCount();
+      qcamUndoBtn.classList.remove("hidden");
+    }else{
+      INDEX = INDEX.filter(e=>e.id!==id);
+      await deletePhotoKey(id);
+      showToast("Kaydedilemedi, tekrar dene");
+    }
+  }
+
+  document.getElementById("qcamShutter").addEventListener("click", function(){
+    if(!qcamStream) return;
+    const vw = qcamVideo.videoWidth, vh = qcamVideo.videoHeight;
+    if(!vw || !vh) return;
+    // ekrandaki çerçeveyi, cover ile ölçeklenmiş video karesindeki bölgeye çevir
+    const vr = qcamVideo.getBoundingClientRect();
+    const fr = qcamFrame.getBoundingClientRect();
+    const scale = Math.max(vr.width / vw, vr.height / vh);
+    const offX = (vw * scale - vr.width) / 2, offY = (vh * scale - vr.height) / 2;
+    let sx = (fr.left - vr.left + offX) / scale;
+    let sy = (fr.top - vr.top + offY) / scale;
+    let sw = fr.width / scale, sh = fr.height / scale;
+    sx = Math.max(0, sx); sy = Math.max(0, sy);
+    sw = Math.min(sw, vw - sx); sh = Math.min(sh, vh - sy);
+    if(sw < 10 || sh < 10) return;
+    const k = Math.min(1, 1500 / Math.max(sw, sh));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(sw * k));
+    c.height = Math.max(1, Math.round(sh * k));
+    c.getContext("2d").drawImage(qcamVideo, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    qcamFlash();
+    addQuickEntry(c.toDataURL("image/jpeg", 0.8));
+  });
+
+  qcamUndoBtn.addEventListener("click", async function(){
+    const id = qcamAdded.pop();
+    if(!id) return;
+    INDEX = INDEX.filter(e=>e.id!==id);
+    await saveIndex(INDEX);
+    await deletePhotoKey(id);
+    updateQcamCount();
+    if(!qcamAdded.length) qcamUndoBtn.classList.add("hidden");
+    showToast("Son çekim silindi");
+  });
+
+  document.getElementById("qcamClose").addEventListener("click", closeQcam);
+  document.getElementById("quickBtn").addEventListener("click", function(){
+    closeAddModal();
+    openQcam();
+  });
+
+  const qcamHandle = document.getElementById("qcamHandle");
+  let qhDrag = false;
+  qcamHandle.addEventListener("pointerdown", function(e){
+    qhDrag = true;
+    if(qcamHandle.setPointerCapture) qcamHandle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  qcamHandle.addEventListener("pointermove", function(e){
+    if(!qhDrag) return;
+    // çerçeve dikeyde ortalı: alt kenar parmağı izlesin diye yükseklik 2× delta
+    const centerY = window.innerHeight / 2;
+    let h = Math.round((e.clientY - centerY) * 2);
+    h = Math.max(90, Math.min(h, Math.round(window.innerHeight * 0.6)));
+    qcamFrame.style.height = h + "px";
+  });
+  function endQhDrag(){
+    if(qhDrag){
+      try{ localStorage.setItem("hd_qcamFrameH", String(qcamFrame.offsetHeight)); }catch(e){}
+    }
+    qhDrag = false;
+  }
+  qcamHandle.addEventListener("pointerup", endQhDrag);
+  qcamHandle.addEventListener("pointercancel", endQhDrag);
+
+  window.addEventListener("resize", function(){
+    if(!qcamEl.classList.contains("hidden")) applyFrameSize();
+  });
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden && qcamStream) closeQcam();
   });
 
   document.getElementById("subjectChips").addEventListener("click", function(e){
