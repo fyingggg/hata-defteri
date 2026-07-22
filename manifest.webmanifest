@@ -1,0 +1,16 @@
+{
+  "name": "Hata Defteri",
+  "short_name": "Hata Defteri",
+  "description": "Yanlış çözdüğün soruların fotoğrafını çek; 1, 7 ve 30 gün sonra tekrar karşına çıksın.",
+  "lang": "tr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#121820",
+  "theme_color": "#121820",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
