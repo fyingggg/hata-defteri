@@ -113,6 +113,8 @@
     box-shadow:1px 2px 0 rgba(0,0,0,0.18);
   }
   .stamp.overdue{background:var(--rust); color:#FBEDE4; border-color:rgba(60,20,8,0.5);}
+  .stamp.worked{background:var(--sage); color:#0F1A11; border-color:rgba(15,26,17,0.45);}
+  .card.done-today{opacity:0.85;}
 
   /* status row for "Tümü" list */
   .list-item{
@@ -512,6 +514,20 @@
     return out;
   }
 
+  // bugün üzerinde çalışılmış (tamamlanmış ya da "çözemedim" denmiş) sorular
+  function workedTodayList(){
+    const today = todayStr();
+    const out = [];
+    INDEX.forEach(entry=>{
+      const stillDue = ["d1","d7","d30"].some(k=> !entry.done[k] && entry.due[k] <= today);
+      if(stillDue) return; // hâlâ bekleyen tekrarı varsa üstteki listede kalsın
+      const okToday = ["d1","d7","d30"].some(k=> entry.done[k] === today);
+      const failToday = entry.failedOn === today;
+      if(okToday || failToday) out.push({entry, okToday, failToday});
+    });
+    return out;
+  }
+
   function nextDueInfo(){
     const today = todayStr();
     let best = null;
@@ -569,10 +585,23 @@
     else await renderAll();
   }
 
+  async function buildCard(entry, stampHtml, clickInterval, extraClass){
+    const photo = await loadPhoto(entry.id);
+    const card = document.createElement("div");
+    card.className = "card" + (extraClass ? " " + extraClass : "");
+    card.innerHTML =
+      '<img class="thumb" src="'+(photo||"")+'" alt="Soru fotoğrafı">'+ stampHtml +
+      '<div class="meta"><div class="note">'+escapeHtml(entry.note || "Not eklenmedi")+'</div>'+
+      '<div class="date">'+displayDate(entry.dateCaptured)+'</div></div>';
+    card.addEventListener("click", ()=> openView(entry.id, clickInterval));
+    return card;
+  }
+
   async function renderToday(){
     const due = dueListToday();
-    if(due.length === 0){
-      const next = nextDueInfo();
+    const worked = workedTodayList();
+    const next = nextDueInfo();
+    if(due.length === 0 && worked.length === 0){
       contentEl.innerHTML =
         '<div class="empty"><div class="glyph">🌤️</div><h2>Bugün için tekrar yok</h2>'+
         '<p>Yeni bir soru eklemek için aşağıdaki + butonuna dokun'+(INDEX.length? ', ya da sıradaki tekrarı bekle.' : '.')+'</p>'+
@@ -580,19 +609,34 @@
         '</div>';
       return;
     }
-    contentEl.innerHTML = '<div class="section-label">Bugün gözden geçir</div><div class="grid" id="todayGrid"></div>';
+    let html = "";
+    if(due.length === 0){
+      html += '<div class="empty" style="padding:30px 24px 6px;"><div class="glyph">🎉</div><h2>Bugünlük hepsi bitti!</h2>'+
+        '<p>Bugünkü bütün tekrarları çalıştın. Harikasın 💜</p>'+
+        (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
+        '</div>';
+    }else{
+      html += '<div class="section-label">Bugün gözden geçir — '+due.length+' kaldı</div><div class="grid" id="todayGrid"></div>';
+    }
+    if(worked.length){
+      html += '<div class="section-label">Bugün çalıştıkların ✓ — '+worked.length+'</div><div class="grid" id="workedGrid"></div>';
+    }
+    contentEl.innerHTML = html;
     const grid = document.getElementById("todayGrid");
-    for(const item of due){
-      const photo = await loadPhoto(item.entry.id);
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML =
-        '<img class="thumb" src="'+(photo||"")+'" alt="Soru fotoğrafı">'+
-        '<span class="stamp'+(item.overdue?" overdue":"")+'">'+intervalShort[item.interval]+(item.overdue?" · GECİKTİ":"")+'</span>'+
-        '<div class="meta"><div class="note">'+escapeHtml(item.entry.note || "Not eklenmedi")+'</div>'+
-        '<div class="date">'+displayDate(item.entry.dateCaptured)+'</div></div>';
-      card.addEventListener("click", ()=> openView(item.entry.id, item.interval));
-      grid.appendChild(card);
+    if(grid){
+      for(const item of due){
+        const stamp = '<span class="stamp'+(item.overdue?" overdue":"")+'">'+intervalShort[item.interval]+(item.overdue?" · GECİKTİ":"")+'</span>';
+        grid.appendChild(await buildCard(item.entry, stamp, item.interval, ""));
+      }
+    }
+    const wgrid = document.getElementById("workedGrid");
+    if(wgrid){
+      for(const w of worked){
+        const stamp = w.failToday
+          ? '<span class="stamp overdue">YARIN YİNE 💪</span>'
+          : '<span class="stamp worked">ÇALIŞTIM ✓</span>';
+        wgrid.appendChild(await buildCard(w.entry, stamp, null, "done-today"));
+      }
     }
   }
 
@@ -708,14 +752,14 @@
   async function completeInterval(id, k){
     const entry = INDEX.find(e=>e.id===id);
     if(!entry) return;
-    entry.done[k] = true;
+    entry.done[k] = todayStr(); // tarih olarak saklanır; "bugün çalıştıkların" bölümü buna bakar
     await saveIndex(INDEX);
     closeViewModal();
     if(isLearned(entry)){
       showToast("🎉 Bu soru artık öğrenildi! Harikasın 💜");
       burst();
     }else{
-      showToast("Tekrar tamamlandı ✓");
+      showToast("Çalıştın ✓ — bugünün listesinde görünmeye devam edecek");
     }
     render();
   }
@@ -725,6 +769,7 @@
     if(!entry) return;
     entry.due[k] = addDays(todayStr(), 1);
     entry.fails = (entry.fails || 0) + 1;
+    entry.failedOn = todayStr();
     await saveIndex(INDEX);
     closeViewModal();
     showToast("Sorun değil — yarın tekrar karşına çıkacak 💪");
