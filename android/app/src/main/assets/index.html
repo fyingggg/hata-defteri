@@ -1,0 +1,1905 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hata Defteri">
+<meta name="theme-color" content="#FFE7F0">
+<title>Hata Defteri</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FFE7F0;
+    --bg-elevated:#FFF6FA;
+    --bg-elevated-2:#FFDCEA;
+    --card:#FFF9F4;
+    --card-ink:#4A2333;
+    --text:#4A2333;
+    --text-muted:#B48CA0;
+    --text-muted-2: #8F5570;
+    --amber:#E75BA0;
+    --amber-ink:#4A0E28;
+    --rust:#D6336C;
+    --sage:#4E9166;
+    --border: rgba(74,35,51,0.16);
+    --border-card: rgba(74,35,51,0.14);
+    --radius: 14px;
+    --shadow: 0 8px 24px rgba(163,62,105,0.16);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    overscroll-behavior-y: none;
+  }
+  body.no-scroll{overflow:hidden;}
+  /* opaque strip behind the iPhone status bar in standalone mode */
+  /* siyah-yarı saydam durum çubuğu modunda saat beyaz yazılır; okunabilsin diye şerit koyu pembe */
+  body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:#96335C;z-index:40;}
+  h1,h2,h3{font-family:'Fraunces',serif; margin:0; font-weight:600;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .hidden{display:none !important;}
+  .app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:calc(110px + env(safe-area-inset-bottom));}
+
+  /* ---- Header ---- */
+  .topbar{padding:calc(28px + env(safe-area-inset-top)) 20px 14px;}
+  .topbar h1{font-size:1.9rem; letter-spacing:-0.01em; color:var(--text);}
+  .topbar .tagline{margin-top:4px; font-size:0.88rem; color:var(--text-muted-2); font-weight:400;}
+
+  /* ---- Install hint ---- */
+  .install-hint{
+    margin:0 20px 14px; padding:12px 14px; border-radius:var(--radius);
+    background:rgba(231,91,160,0.10); border:1px solid rgba(231,91,160,0.45);
+    display:flex; gap:10px; align-items:flex-start; font-size:0.84rem; line-height:1.45; color:var(--text-muted-2);
+  }
+  .install-hint b{color:var(--amber);}
+  .install-hint .dismiss{background:none; border:none; color:var(--text-muted); font-size:1rem; padding:2px 4px; cursor:pointer; flex-shrink:0;}
+
+  /* ---- Tabs ---- */
+  .tabs{display:flex; gap:6px; padding:4px 20px 18px; position:sticky; top:env(safe-area-inset-top); background:var(--bg); z-index:5;}
+  .tab{
+    flex:1; padding:10px 12px; border-radius:999px; border:1px solid var(--border);
+    background:transparent; color:var(--text-muted-2); font-family:'Inter',sans-serif;
+    font-size:0.92rem; font-weight:600; cursor:pointer; transition:all .18s ease;
+  }
+  .tab.active{background:var(--amber); color:var(--amber-ink); border-color:var(--amber);}
+  .tab .count{margin-left:6px; opacity:0.75; font-weight:500;}
+
+  main{flex:1; padding:0 20px;}
+
+  /* ---- Empty state ---- */
+  .empty{
+    text-align:center; padding:56px 24px; color:var(--text-muted-2);
+  }
+  .empty .glyph{font-size:2.6rem; margin-bottom:14px; opacity:0.85;}
+  .empty h2{color:var(--text); font-size:1.25rem; margin-bottom:8px;}
+  .empty p{font-size:0.92rem; line-height:1.5; max-width:320px; margin:0 auto;}
+  .empty .next-due{margin-top:14px; font-family:'IBM Plex Mono',monospace; font-size:0.78rem; color:var(--amber);}
+
+  /* ---- Subject filter ---- */
+  .filter-row{display:flex; gap:7px; overflow-x:auto; margin:14px 2px 2px; padding-bottom:4px; -webkit-overflow-scrolling:touch;}
+  .filter-row .chip{flex-shrink:0;}
+  .filter-row .chip.selected{background:var(--amber); border-color:var(--amber); color:var(--amber-ink);}
+
+  /* ---- Section label ---- */
+  .section-label{
+    font-family:'IBM Plex Mono',monospace; font-size:0.72rem; letter-spacing:0.09em;
+    text-transform:uppercase; color:var(--text-muted); margin:18px 2px 10px;
+  }
+
+  /* ---- Card grid ---- */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .card{
+    position:relative; background:var(--card); border-radius:var(--radius);
+    overflow:hidden; box-shadow:var(--shadow); cursor:pointer; border:1px solid var(--border-card);
+    transform:rotate(0deg); transition:transform .15s ease;
+  }
+  .card:active{transform:scale(0.97);}
+  .card .thumb{width:100%; aspect-ratio:4/3; object-fit:contain; display:block; background:#F7E1EC;}
+  .card .meta{padding:9px 10px 11px;}
+  .card .note{font-size:0.78rem; color:var(--card-ink); font-weight:600; line-height:1.25;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:1.2em;}
+  .card .date{font-family:'IBM Plex Mono',monospace; font-size:0.66rem; color:rgba(36,28,18,0.55); margin-top:3px;}
+
+  .stamp{
+    position:absolute; top:8px; right:8px; background:var(--amber); color:var(--amber-ink);
+    font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:0.62rem; letter-spacing:0.04em;
+    padding:4px 7px; border-radius:3px; transform:rotate(-6deg); border:1.5px solid rgba(74,14,40,0.45);
+    box-shadow:1px 2px 0 rgba(0,0,0,0.18);
+  }
+  .stamp.overdue{background:var(--rust); color:#FFF0F5; border-color:rgba(122,17,58,0.5);}
+  .stamp.worked{background:var(--sage); color:#0F1A11; border-color:rgba(15,26,17,0.45);}
+  .card.done-today{opacity:0.85;}
+
+  /* status row for "Tümü" list */
+  .list-item{
+    display:flex; gap:12px; background:var(--bg-elevated); border:1px solid var(--border);
+    border-radius:var(--radius); padding:10px; margin-bottom:10px; align-items:center;
+  }
+  .list-item .thumb-sm{width:56px; height:56px; border-radius:9px; object-fit:cover; flex-shrink:0; background:#EBD3E0;}
+  .list-item .info{flex:1; min-width:0;}
+  .list-item .note{font-size:0.86rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .list-item .date{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted); margin-top:2px;}
+  .badges{display:flex; gap:5px; margin-top:6px;}
+  .badge{
+    font-family:'IBM Plex Mono',monospace; font-size:0.62rem; padding:2px 6px; border-radius:3px;
+    border:1px solid var(--border); color:var(--text-muted-2);
+  }
+  .badge.done{background:rgba(78,145,102,0.14); color:var(--sage); border-color:rgba(78,145,102,0.4);}
+  .badge.due{background:rgba(231,91,160,0.14); color:var(--amber); border-color:rgba(231,91,160,0.45);}
+  .del-btn{background:none; border:none; color:var(--text-muted); font-size:1.1rem; padding:6px 8px; cursor:pointer;}
+
+  /* ---- Stats ---- */
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;}
+  .stat-card{background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;}
+  .stat-card .num{font-family:'Fraunces',serif; font-size:1.9rem; color:var(--amber); line-height:1.1;}
+  .stat-card .num.sage{color:var(--sage);}
+  .stat-card .lbl{font-size:0.68rem; color:var(--text-muted-2); margin-top:4px; font-family:'IBM Plex Mono',monospace; letter-spacing:0.06em; text-transform:uppercase;}
+  .subj-row{background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px;}
+  .subj-row .top{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
+  .subj-row .name{font-weight:700; font-size:0.95rem; color:var(--text);}
+  .subj-row .nums{font-family:'IBM Plex Mono',monospace; font-size:0.66rem; color:var(--text-muted-2); text-align:right; flex-shrink:0;}
+  .bar{height:8px; background:var(--bg); border-radius:99px; margin-top:9px; overflow:hidden; border:1px solid var(--border);}
+  .bar > div{height:100%; background:var(--sage); border-radius:99px;}
+  .storage-line{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted); text-align:center; margin-top:18px; min-height:1em;}
+  .show-more{width:100%; margin-top:4px; padding:13px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--text-muted-2); font-family:'Inter',sans-serif; font-size:0.88rem; font-weight:600; cursor:pointer;}
+
+  /* ---- Backup row ---- */
+  .backup-row{display:flex; gap:10px; margin:24px 0 6px;}
+  .backup-row .btn{font-size:0.85rem; padding:12px;}
+  .backup-note{font-size:0.74rem; color:var(--text-muted); text-align:center; line-height:1.5; margin:8px 4px 0;}
+
+  /* ---- FAB ---- */
+  .fab{
+    position:fixed; bottom:calc(26px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
+    width:64px; height:64px; border-radius:50%; background:var(--amber); color:var(--amber-ink);
+    border:none; font-size:2rem; line-height:1; box-shadow:0 10px 26px rgba(231,91,160,0.45);
+    cursor:pointer; z-index:20; display:flex; align-items:center; justify-content:center;
+    font-family:'Inter',sans-serif; font-weight:400;
+  }
+  .fab:active{transform:translateX(-50%) scale(0.94);}
+
+  /* ---- Modal ---- */
+  .modal{
+    position:fixed; inset:0; background:rgba(74,14,40,0.5); backdrop-filter:blur(3px);
+    display:flex; align-items:flex-end; z-index:50; opacity:1; transition:opacity .2s ease;
+  }
+  .modal.hidden{display:none;}
+  .sheet{
+    background:var(--bg-elevated); width:100%; max-width:560px; margin:0 auto;
+    border-radius:22px 22px 0 0; padding:22px 20px calc(28px + env(safe-area-inset-bottom)); max-height:92vh; overflow-y:auto;
+    box-shadow:0 -12px 40px rgba(163,62,105,0.28);
+  }
+  .sheet-handle{width:38px; height:4px; background:var(--border); border-radius:3px; margin:0 auto 16px;}
+  .sheet h2{font-size:1.3rem; margin-bottom:4px;}
+  .sheet .sub{font-size:0.85rem; color:var(--text-muted-2); margin-bottom:18px;}
+
+  .capture-zone{
+    border:2px dashed var(--border); border-radius:var(--radius); padding:28px 16px;
+    text-align:center; cursor:pointer; margin-bottom:10px; transition:border-color .15s;
+  }
+  .capture-zone:active{border-color:var(--amber);}
+  .capture-zone .glyph{font-size:2.2rem; margin-bottom:8px;}
+  .capture-zone p{color:var(--text-muted-2); font-size:0.9rem; margin:0;}
+  .pick-row{display:flex; gap:18px; justify-content:center; margin:0 0 14px;}
+  .pick-link{
+    background:none; border:none; color:var(--text-muted-2); font-family:'Inter',sans-serif;
+    font-size:0.84rem; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:3px;
+  }
+  .preview-wrap{margin-bottom:12px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border);}
+  .preview-wrap img{width:100%; display:block; max-height:340px; object-fit:contain; background:#000;}
+
+  .chip-row{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px;}
+  .chip{
+    padding:7px 13px; border-radius:999px; border:1px solid var(--border); background:transparent;
+    color:var(--text-muted-2); font-size:0.8rem; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .chip.selected{background:var(--rust); border-color:var(--rust); color:#FBEDE4;}
+
+  input[type=text]{
+    width:100%; padding:13px 14px; border-radius:11px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; font-size:0.95rem;
+    margin-bottom:16px;
+  }
+  input[type=text]::placeholder{color:var(--text-muted);}
+  input[type=text]:focus{outline:2px solid var(--amber); border-color:transparent;}
+
+  .btn-row{display:flex; gap:10px;}
+  .btn{
+    flex:1; padding:14px; border-radius:12px; border:none; font-family:'Inter',sans-serif;
+    font-size:0.95rem; font-weight:700; cursor:pointer;
+  }
+  .btn-primary{background:var(--amber); color:var(--amber-ink);}
+  .btn-primary:disabled{opacity:0.4; cursor:not-allowed;}
+  .btn-secondary{background:transparent; border:1px solid var(--border); color:var(--text-muted-2);}
+  .btn:focus-visible, .tab:focus-visible, .chip:focus-visible, .fab:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+
+  /* review/lightbox modal */
+  .view-photo{width:100%; border-radius:12px; margin-bottom:6px; max-height:52vh; object-fit:contain; background:#000; cursor:zoom-in;}
+  .zoom-hint{font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:var(--text-muted); text-align:center; margin:0 0 12px;}
+  .due-line{display:flex; align-items:center; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
+  .due-line .stamp{position:static; transform:rotate(-3deg);}
+  .due-line span{color:var(--text-muted-2); font-size:0.85rem;}
+  .due-line .learned-badge{
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem; font-weight:700; letter-spacing:0.05em;
+    background:rgba(78,145,102,0.14); color:var(--sage); border:1px solid rgba(78,145,102,0.4);
+    padding:4px 8px; border-radius:3px;
+  }
+
+  /* fullscreen photo zoom */
+  .lightbox{
+    position:fixed; inset:0; background:#000; z-index:70; overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .lightbox img{display:block; width:100%; margin:auto; min-height:100%; object-fit:contain;}
+  .lightbox img.zoomed{width:190%; max-width:none; min-height:0; object-fit:unset;}
+  .lightbox-close{
+    position:fixed; top:calc(12px + env(safe-area-inset-top)); right:14px; z-index:71;
+    width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.16);
+    color:#fff; font-size:1.15rem; cursor:pointer;
+  }
+
+  /* fotoğraf kırpma ekranı */
+  .cropper{
+    position:fixed; inset:0; background:#0B0F14; z-index:75; display:flex; flex-direction:column;
+    padding:calc(14px + env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom));
+  }
+  .crop-stage{
+    position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:none;
+  }
+  .crop-stage img{max-width:100%; max-height:100%; display:block; pointer-events:none; user-select:none; -webkit-user-select:none;}
+  .crop-box{position:absolute; border:1.5px solid var(--amber); box-shadow:0 0 0 200vmax rgba(8,10,13,0.74); touch-action:none; cursor:move;}
+  .crop-grid{
+    position:absolute; inset:0; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(242,235,219,0.32) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(242,235,219,0.32) 1px, transparent 1px);
+    background-size:100% 33.34%, 33.34% 100%;
+  }
+  .crop-handle{position:absolute; width:38px; height:38px; z-index:2;}
+  .crop-handle::after{content:""; position:absolute; inset:9px; border:0 solid var(--amber);}
+  .h-nw{top:-19px; left:-19px;} .h-nw::after{border-top-width:4px; border-left-width:4px;}
+  .h-ne{top:-19px; right:-19px;} .h-ne::after{border-top-width:4px; border-right-width:4px;}
+  .h-sw{bottom:-19px; left:-19px;} .h-sw::after{border-bottom-width:4px; border-left-width:4px;}
+  .h-se{bottom:-19px; right:-19px;} .h-se::after{border-bottom-width:4px; border-right-width:4px;}
+  .crop-tip{font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--text-muted-2); text-align:center; margin:10px 0;}
+  .crop-bar{display:flex; gap:10px;}
+
+  /* hızlı seri çekim */
+  .quick-zone{
+    width:100%; padding:14px 16px; border-radius:var(--radius); margin-bottom:10px;
+    background:rgba(231,91,160,0.10); border:1px solid rgba(231,91,160,0.45);
+    color:var(--text); font-family:'Inter',sans-serif; font-size:0.86rem; line-height:1.45;
+    text-align:left; cursor:pointer;
+  }
+  .quick-zone b{color:var(--amber);}
+  .qcam{position:fixed; inset:0; background:#000; z-index:74;}
+  .qcam video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .qcam-frame{
+    position:absolute; top:50%; transform:translateY(-50%); border-radius:4px;
+    border:1.5px solid var(--amber); box-shadow:0 0 0 200vmax rgba(8,10,13,0.5); z-index:2;
+  }
+  .qcam-handle{
+    position:absolute; left:50%; bottom:-23px; transform:translateX(-50%);
+    width:44px; height:44px; border-radius:50%; background:var(--amber); color:var(--amber-ink);
+    border:none; display:flex; align-items:center; justify-content:center; font-size:1.15rem;
+    touch-action:none; box-shadow:0 3px 10px rgba(0,0,0,0.4); cursor:ns-resize;
+  }
+  .qcam-top{
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); left:12px; right:12px;
+    display:flex; gap:10px; align-items:center; z-index:6;
+  }
+  .qcam-close{width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.18); color:#fff; font-size:1.05rem; flex-shrink:0; cursor:pointer;}
+  .qcam-subjects{display:flex; gap:6px; overflow-x:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:2px;}
+  .qcam-subjects .chip{flex-shrink:0; background:rgba(0,0,0,0.35); border-color:rgba(255,255,255,0.3); color:#eee;}
+  .qcam-subjects .chip.selected{background:var(--rust); border-color:var(--rust); color:#FBEDE4;}
+  .qcam-tip{
+    position:absolute; left:0; right:0; bottom:calc(120px + env(safe-area-inset-bottom));
+    text-align:center; color:rgba(255,255,255,0.88); font-size:0.7rem; font-family:'IBM Plex Mono',monospace;
+    z-index:3; text-shadow:0 1px 3px rgba(0,0,0,0.8); padding:0 24px; margin:0;
+  }
+  .qcam-bottom{
+    position:absolute; left:0; right:0; bottom:calc(22px + env(safe-area-inset-bottom));
+    display:flex; align-items:center; justify-content:center; z-index:3;
+  }
+  .qcam-shutter{
+    width:74px; height:74px; border-radius:50%; border:5px solid #fff;
+    background:var(--amber); box-shadow:0 4px 18px rgba(0,0,0,0.5); cursor:pointer;
+  }
+  .qcam-shutter:active{transform:scale(0.92);}
+  .qcam-shutter.dim{opacity:0.45;}
+  .qcam-subjects.attn{animation:qpulse .5s ease 2;}
+  @keyframes qpulse{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}
+  .qcam-count{
+    position:absolute; left:24px; color:#fff; font-family:'IBM Plex Mono',monospace; font-size:0.82rem;
+    background:rgba(0,0,0,0.45); padding:6px 11px; border-radius:999px;
+  }
+  .qcam-count:empty{display:none;}
+  .qcam-undo{
+    position:absolute; right:18px; background:rgba(0,0,0,0.45); border:none; color:#fff;
+    font-size:0.78rem; padding:8px 12px; border-radius:999px; font-family:'Inter',sans-serif; cursor:pointer;
+  }
+  .qcam-flash{position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:5; transition:opacity .2s;}
+  .qcam-flash.on{opacity:0.65; transition:none;}
+  .qcam-error{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; color:#eee; z-index:4; background:#0B0F14; padding:30px; text-align:center;
+    font-size:0.9rem; line-height:1.55;
+  }
+
+  .toast{
+    position:fixed; bottom:calc(110px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:var(--sage);
+    color:#0F1A11; padding:11px 20px; border-radius:999px; font-weight:700; font-size:0.85rem;
+    box-shadow:var(--shadow); z-index:80; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    max-width:88vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+
+  @media (prefers-reduced-motion:reduce){
+    .card, .fab, .toast{transition:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>Hata Defteri</h1>
+    <p class="tagline">Yapamadığın soruyu çek, sistem sana ne zaman tekrar edeceğini söylesin.</p>
+  </div>
+
+  <div class="install-hint hidden" id="installHint">
+    <div>📲 <b>Uygulama olarak kur:</b> Safari'de alttaki <b>Paylaş</b> (kare + ok) düğmesine bas → <b>"Ana Ekrana Ekle"</b> seç. Böylece kendi simgesiyle, tam ekran ve internetsiz çalışır.</div>
+    <button class="dismiss" id="dismissHint" aria-label="Kapat">✕</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-view="today">Bugün <span class="count" id="countToday"></span></button>
+    <button class="tab" data-view="all">Tümü <span class="count" id="countAll"></span></button>
+    <button class="tab" data-view="stats">Özet</button>
+  </div>
+
+  <main id="content"></main>
+</div>
+
+<button class="fab" id="fabAdd" aria-label="Yeni soru ekle">+</button>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="galleryInput" accept="image/*" style="display:none">
+<input type="file" id="importInput" accept=".json,application/json" style="display:none">
+
+<!-- ADD SHEET -->
+<div class="modal hidden" id="addModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Yeni Soru Ekle</h2>
+    <p class="sub">Fotoğrafı çek, istersen dersini seç, kaydet. Tekrar tarihleri (+1 / +7 / +30 gün) otomatik hesaplanır.</p>
+
+    <button class="quick-zone" id="quickBtn">⚡ <b>Seri Çekim</b> — sabit yatay çerçeveyle art arda çek; her çekim kırpmasız, otomatik soru olarak eklenir</button>
+
+    <div class="capture-zone" id="captureZone">
+      <div class="glyph">📷</div>
+      <p>Fotoğraf çekmek için dokun</p>
+    </div>
+    <div class="preview-wrap hidden" id="previewWrap">
+      <img id="previewImg" alt="Çekilen soru önizlemesi">
+    </div>
+    <div class="pick-row">
+      <button class="pick-link hidden" id="retakeBtn">↻ Yeniden çek</button>
+      <button class="pick-link hidden" id="cropAgainBtn">✂️ Yeniden kırp</button>
+      <button class="pick-link" id="galleryBtn">🖼 Galeriden seç</button>
+    </div>
+
+    <div class="chip-row" id="subjectChips">
+      <button class="chip" data-subj="Matematik">Matematik</button>
+      <button class="chip" data-subj="Fizik">Fizik</button>
+      <button class="chip" data-subj="Kimya">Kimya</button>
+      <button class="chip" data-subj="Biyoloji">Biyoloji</button>
+      <button class="chip" data-subj="Türkçe">Türkçe</button>
+      <button class="chip" data-subj="Sosyal">Sosyal</button>
+    </div>
+    <input type="text" id="noteInput" placeholder="Konu (opsiyonel) — örn. Türev - artan azalan">
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="cancelAdd">Vazgeç</button>
+      <button class="btn btn-primary" id="saveAdd" disabled>Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW / REVIEW SHEET -->
+<div class="modal hidden" id="viewModal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <img class="view-photo" id="viewPhoto" alt="Soru fotoğrafı">
+    <p class="zoom-hint">büyütmek için fotoğrafa dokun</p>
+    <div class="due-line" id="viewDueLine"></div>
+    <p class="sub" id="viewNote" style="margin-top:-10px;"></p>
+    <div class="btn-row" id="viewActions"></div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-secondary" id="closeView">Kapat</button>
+      <button class="btn btn-secondary" id="deleteEntry" style="color:var(--rust);">Sil</button>
+    </div>
+  </div>
+</div>
+
+<!-- QUICK CAPTURE -->
+<div class="qcam hidden" id="qcam">
+  <video id="qcamVideo" autoplay playsinline muted></video>
+  <div class="qcam-frame" id="qcamFrame">
+    <div class="crop-grid"></div>
+    <button class="qcam-handle" id="qcamHandle" aria-label="Çerçeve yüksekliğini ayarla">⇕</button>
+  </div>
+  <div class="qcam-top">
+    <button class="qcam-close" id="qcamClose" aria-label="Kapat">✕</button>
+    <div class="qcam-subjects" id="qcamSubjects"></div>
+  </div>
+  <p class="qcam-tip" id="qcamTip">Soruyu yatay çerçeveye sığdır ve çek — her çekim otomatik eklenir. Yükseklik ⇕ ile ayarlanır.</p>
+  <div class="qcam-bottom">
+    <div class="qcam-count" id="qcamCount"></div>
+    <button class="qcam-shutter" id="qcamShutter" aria-label="Çek"></button>
+    <button class="qcam-undo hidden" id="qcamUndo">↩︎ Geri al</button>
+  </div>
+  <div class="qcam-flash" id="qcamFlash"></div>
+  <div class="qcam-error hidden" id="qcamError"></div>
+</div>
+
+<!-- CROP OVERLAY -->
+<div class="cropper hidden" id="cropper">
+  <div class="crop-stage" id="cropStage">
+    <img id="cropImg" alt="Kırpılacak fotoğraf" draggable="false">
+    <div class="crop-box" id="cropBox">
+      <div class="crop-grid"></div>
+      <div class="crop-handle h-nw" data-h="nw"></div>
+      <div class="crop-handle h-ne" data-h="ne"></div>
+      <div class="crop-handle h-sw" data-h="sw"></div>
+      <div class="crop-handle h-se" data-h="se"></div>
+    </div>
+  </div>
+  <p class="crop-tip">Soruyu çerçeveye al — köşelerden tut, taşımak için içinden sürükle</p>
+  <div class="crop-bar">
+    <button class="btn btn-secondary" id="cropCancel">Vazgeç</button>
+    <button class="btn btn-secondary" id="cropRotate">↺ Döndür</button>
+    <button class="btn btn-primary" id="cropUse">Kullan ✓</button>
+  </div>
+</div>
+
+<!-- FULLSCREEN PHOTO -->
+<div class="lightbox hidden" id="lightbox">
+  <img id="lightboxImg" alt="Soru fotoğrafı (tam ekran)">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Kapat">✕</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- date helpers ----------
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function addDays(dateStr, n){
+    const [y,m,d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m-1, d);
+    dt.setDate(dt.getDate()+n);
+    return dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0") + "-" + String(dt.getDate()).padStart(2,"0");
+  }
+  function displayDate(dateStr){
+    const [y,m,d] = dateStr.split("-");
+    const aylar = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+    return d + " " + aylar[parseInt(m,10)-1] + " " + y;
+  }
+
+  // ---------- storage: IndexedDB (works offline, survives app restarts on iOS) ----------
+  let db = null;
+
+  function openDB(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open("hataDefteri", 1);
+      req.onupgradeneeded = function(e){
+        const d = e.target.result;
+        if(!d.objectStoreNames.contains("kv")) d.createObjectStore("kv");
+      };
+      req.onsuccess = function(){ db = req.result; resolve(); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  }
+  function kvGet(key){
+    return new Promise((resolve, reject)=>{
+      const r = db.transaction("kv").objectStore("kv").get(key);
+      r.onsuccess = ()=> resolve(r.result === undefined ? null : r.result);
+      r.onerror = ()=> reject(r.error);
+    });
+  }
+  function kvSet(key, val){
+    return new Promise((resolve, reject)=>{
+      const t = db.transaction("kv", "readwrite");
+      t.objectStore("kv").put(val, key);
+      t.oncomplete = ()=> resolve(true);
+      t.onerror = ()=> reject(t.error);
+    });
+  }
+  function kvDel(key){
+    return new Promise((resolve)=>{
+      const t = db.transaction("kv", "readwrite");
+      t.objectStore("kv").delete(key);
+      t.oncomplete = ()=> resolve(true);
+      t.onerror = ()=> resolve(false);
+    });
+  }
+
+  function kvKeys(){
+    return new Promise((resolve, reject)=>{
+      const r = db.transaction("kv").objectStore("kv").getAllKeys();
+      r.onsuccess = ()=> resolve(r.result || []);
+      r.onerror = ()=> reject(r.error);
+    });
+  }
+
+  // okuma hatası "boş liste" sanılırsa sonraki kayıt eski verilerin üzerine yazar;
+  // o yüzden hata yutulmaz, init yakalar ve yazma kilitlenir
+  let indexBroken = false;
+  async function loadIndex(){
+    const v = await kvGet("hata_index");
+    return Array.isArray(v) ? v : [];
+  }
+  async function saveIndex(list){
+    if(indexBroken) return false;
+    try{ await kvSet("hata_index", list); return true; }
+    catch(e){ return false; }
+  }
+  async function loadPhoto(id){
+    try{ return await kvGet("hata_photo_" + id); }
+    catch(e){ return null; }
+  }
+  async function savePhoto(id, dataUrl){
+    try{ await kvSet("hata_photo_" + id, dataUrl); return true; }
+    catch(e){ return false; }
+  }
+  async function deletePhotoKey(id){
+    await kvDel("hata_photo_" + id);
+    await kvDel("hata_thumb_" + id);
+  }
+
+  // ---------- kayıp kayıt kurtarma ----------
+  // id "e" + Date.now() + rastgele ek olarak üretiliyor; çekim tarihi buradan geri çıkarılır
+  function dateFromId(id){
+    const m = /^e(\d{13})/.exec(String(id));
+    if(!m) return null;
+    const d = new Date(parseInt(m[1],10));
+    if(isNaN(d.getTime())) return null;
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  async function findOrphanPhotoIds(){
+    const keys = await kvKeys();
+    const have = {};
+    INDEX.forEach(function(e){ have[e.id] = true; });
+    const ids = [];
+    keys.forEach(function(k){
+      if(typeof k === "string" && k.indexOf("hata_photo_") === 0){
+        const id = k.slice("hata_photo_".length);
+        if(!have[id]) ids.push(id);
+      }
+    });
+    return ids;
+  }
+  async function recoverOrphans(ids){
+    for(const id of ids){
+      const dcap = dateFromId(id) || todayStr();
+      INDEX.push({
+        id: id, dateCaptured: dcap, subject: "", note: "",
+        due: { d1: addDays(dcap,1), d7: addDays(dcap,7), d30: addDays(dcap,30) },
+        done: { d1:false, d7:false, d30:false }
+      });
+    }
+    await saveIndex(INDEX);
+    return ids.length;
+  }
+  function ignoredOrphans(){
+    try{ return JSON.parse(localStorage.getItem("hd_orphanIgnored")) || []; }catch(e){ return []; }
+  }
+  async function checkOrphans(manual){
+    let ids = [];
+    try{ ids = await findOrphanPhotoIds(); }catch(e){ return; }
+    if(!manual){
+      const ign = ignoredOrphans();
+      ids = ids.filter(function(id){ return ign.indexOf(id) < 0; });
+    }
+    if(!ids.length){
+      if(manual) showToast("Kayıp fotoğraf yok ✓");
+      return;
+    }
+    const ok = window.confirm(ids.length + " adet, listede görünmeyen soru fotoğrafı bulundu. Soru olarak geri eklensin mi?\n\n(Ders/not bilgisi ve işaretlenen tekrarlar geri gelmez; tekrar takvimi çekim tarihine göre yeniden kurulur.)");
+    if(ok){
+      const n = await recoverOrphans(ids);
+      showToast(n + " soru geri getirildi 🎉");
+      render();
+    }else{
+      try{
+        const ign = ignoredOrphans();
+        ids.forEach(function(id){ if(ign.indexOf(id) < 0) ign.push(id); });
+        localStorage.setItem("hd_orphanIgnored", JSON.stringify(ign));
+      }catch(e){}
+    }
+  }
+
+  // ---------- küçük önizlemeler (listeler tam boy fotoğrafla boğulmasın) ----------
+  function shrinkDataUrl(dataUrl, maxW, quality){
+    return new Promise(function(resolve, reject){
+      const img = new Image();
+      img.onload = function(){
+        const s = Math.min(1, maxW / img.width);
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * s));
+        c.height = Math.max(1, Math.round(img.height * s));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = function(){ reject(new Error("thumb")); };
+      img.src = dataUrl;
+    });
+  }
+  async function saveThumbFor(id, fullDataUrl){
+    try{
+      const t = await shrinkDataUrl(fullDataUrl, 300, 0.62);
+      await kvSet("hata_thumb_" + id, t);
+      return t;
+    }catch(e){ return null; }
+  }
+  // önizlemeyi getir; eski kayıtlarda yoksa tam fotoğraftan üretip sakla
+  async function loadThumb(id){
+    try{
+      const t = await kvGet("hata_thumb_" + id);
+      if(t) return t;
+      const full = await kvGet("hata_photo_" + id);
+      if(!full) return null;
+      return (await saveThumbFor(id, full)) || full;
+    }catch(e){ return null; }
+  }
+
+  // ---------- image compression ----------
+  function compressImage(file, maxWidth, quality){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = function(e){
+        const img = new Image();
+        img.onload = function(){
+          let w = img.width, h = img.height;
+          if(w > maxWidth){ h = Math.round(h * (maxWidth / w)); w = maxWidth; }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ---------- state ----------
+  let INDEX = [];
+  let currentView = "today";
+  let activeSubject = ""; // "" = hepsi, "__none__" = ders atanmamışlar
+  let allLimit = 60, allLimitKey = ""; // "Tümü" listesi sayfa sayfa yüklensin
+  let pendingImage = null;
+  let pendingSource = null;
+  let pendingSubject = "";
+  let activeEntryId = null;
+  let activeInterval = null;
+
+  const contentEl = document.getElementById("content");
+  const toastEl = document.getElementById("toast");
+
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    setTimeout(()=>toastEl.classList.remove("show"), 2200);
+  }
+
+  function isLearned(entry){
+    return entry.done.d1 && entry.done.d7 && entry.done.d30;
+  }
+
+  function dueListToday(){
+    const today = todayStr();
+    const out = [];
+    INDEX.forEach(entry=>{
+      ["d1","d7","d30"].forEach(k=>{
+        if(entry.due[k] <= today && !entry.done[k]){
+          out.push({entry, interval:k, overdue: entry.due[k] < today});
+        }
+      });
+    });
+    out.sort((a,b)=> a.entry.due[a.interval] < b.entry.due[b.interval] ? -1 : 1);
+    return out;
+  }
+
+  // bugün üzerinde çalışılmış (tamamlanmış ya da "çözemedim" denmiş) sorular
+  function workedTodayList(){
+    const today = todayStr();
+    const out = [];
+    INDEX.forEach(entry=>{
+      const stillDue = ["d1","d7","d30"].some(k=> !entry.done[k] && entry.due[k] <= today);
+      if(stillDue) return; // hâlâ bekleyen tekrarı varsa üstteki listede kalsın
+      const okToday = ["d1","d7","d30"].some(k=> entry.done[k] === today);
+      const failToday = entry.failedOn === today;
+      if(okToday || failToday) out.push({entry, okToday, failToday});
+    });
+    return out;
+  }
+
+  function nextDueInfo(){
+    const today = todayStr();
+    let best = null;
+    INDEX.forEach(entry=>{
+      ["d1","d7","d30"].forEach(k=>{
+        if(!entry.done[k] && entry.due[k] > today){
+          if(!best || entry.due[k] < best) best = entry.due[k];
+        }
+      });
+    });
+    return best;
+  }
+
+  const intervalLabel = {d1:"TEKRAR 1 · 1 GÜN", d7:"TEKRAR 2 · 7 GÜN", d30:"TEKRAR 3 · 30 GÜN"};
+  const intervalShort = {d1:"1G", d7:"7G", d30:"30G"};
+
+  // ---------- ders filtresi ----------
+  function matchesFilter(e){
+    if(!activeSubject) return true;
+    if(activeSubject === "__none__") return !e.subject;
+    return e.subject === activeSubject;
+  }
+  function subjectFilterHtml(){
+    const counts = {};
+    INDEX.forEach(function(e){ const s = e.subject || ""; counts[s] = (counts[s]||0)+1; });
+    const names = Object.keys(counts).filter(function(s){ return s !== ""; }).sort(function(a,b){ return a.localeCompare(b,"tr"); });
+    if(!names.length) return ""; // hiç ders atanmamışsa filtre satırı gösterme
+    function chipHtml(val, label, n){
+      const sel = activeSubject === val ? " selected" : "";
+      return '<button class="chip'+sel+'" data-subj="'+escapeHtml(val)+'">'+escapeHtml(label)+' · '+n+'</button>';
+    }
+    let html = '<div class="filter-row" id="filterRow">';
+    html += chipHtml("", "Hepsi", INDEX.length);
+    names.forEach(function(s){ html += chipHtml(s, s, counts[s]); });
+    if(counts[""]) html += chipHtml("__none__", "Diğer", counts[""]);
+    html += '</div>';
+    return html;
+  }
+  function wireFilterRow(){
+    const row = document.getElementById("filterRow");
+    if(!row) return;
+    row.addEventListener("click", function(e){
+      const c = e.target.closest(".chip");
+      if(!c) return;
+      activeSubject = c.dataset.subj || "";
+      render();
+    });
+  }
+  // eski kayıtlar: ders bilgisi notun başına yazılıyordu, ayrı alana taşı
+  function migrateSubjects(){
+    let changed = false;
+    const KNOWN = ["Matematik","Fizik","Kimya","Biyoloji","Türkçe","Sosyal"];
+    INDEX.forEach(function(e){
+      if(e.subject !== undefined) return;
+      e.subject = "";
+      const n = e.note || "";
+      for(const s of KNOWN){
+        if(n === s){ e.subject = s; e.note = ""; break; }
+        if(n.indexOf(s + " - ") === 0){ e.subject = s; e.note = n.slice(s.length + 3); break; }
+      }
+      changed = true;
+    });
+    return changed;
+  }
+
+  function updateCounts(){
+    document.getElementById("countToday").textContent = dueListToday().length || "";
+    document.getElementById("countAll").textContent = INDEX.length || "";
+  }
+
+  function updateBadge(){
+    try{
+      if("setAppBadge" in navigator){
+        const n = dueListToday().length;
+        const p = n ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+        if(p && p.catch) p.catch(function(){});
+      }
+    }catch(e){}
+  }
+
+  // ---------- dokununca çiçek & uğur böceği efekti ----------
+  const TAP_EMO = ["🌸","🌷","💖","🐞","🦋","✨"];
+  let tapBits = 0; // ekranda aynı anda uçuşan parça sayısı sınırlı kalsın
+  document.addEventListener("click", function(e){
+    try{
+      if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      if(!e.isTrusted || tapBits > 28) return;
+      if(e.target && e.target.closest && e.target.closest("#qcam, #cropper, #lightbox")) return;
+      const x = e.clientX, y = e.clientY;
+      if(!x && !y) return; // klavyeden tetiklenen tıklamalarda koordinat yok
+      for(let i = 0; i < 5; i++){
+        const s = document.createElement("span");
+        s.textContent = TAP_EMO[Math.floor(Math.random()*TAP_EMO.length)];
+        s.style.cssText = "position:fixed;left:"+(x-10)+"px;top:"+(y-10)+"px;font-size:"+(13+Math.random()*9)+"px;z-index:95;pointer-events:none;";
+        document.body.appendChild(s);
+        tapBits++;
+        const ang = Math.random()*Math.PI*2, dist = 24+Math.random()*42;
+        const dx = Math.cos(ang)*dist, dy = Math.sin(ang)*dist - 26;
+        const anim = s.animate(
+          [{transform:"translate(0,0) scale(0.45) rotate(0deg)", opacity:1},
+           {transform:"translate("+dx+"px,"+dy+"px) scale(1.1) rotate("+((Math.random()-0.5)*80)+"deg)", opacity:0}],
+          {duration:620+Math.random()*380, easing:"ease-out"}
+        );
+        anim.onfinish = function(){ s.remove(); tapBits--; };
+      }
+    }catch(err){}
+  }, true);
+
+  // ---------- celebration ----------
+  function burst(){
+    const emo = ["💖","🌸","🎀","✨","🦋"];
+    for(let i=0;i<26;i++){
+      const s = document.createElement("span");
+      s.textContent = emo[i % emo.length];
+      s.style.cssText = "position:fixed;left:"+(8+Math.random()*84)+"vw;top:"+(35+Math.random()*30)+"vh;font-size:"+(16+Math.random()*20)+"px;z-index:90;pointer-events:none;";
+      document.body.appendChild(s);
+      const dx = (Math.random()-0.5)*180, dy = -(130+Math.random()*240);
+      const anim = s.animate(
+        [{transform:"translate(0,0) rotate(0deg)", opacity:1},
+         {transform:"translate("+dx+"px,"+dy+"px) rotate("+((Math.random()-0.5)*140)+"deg)", opacity:0}],
+        {duration:1000+Math.random()*700, easing:"ease-out"}
+      );
+      anim.onfinish = function(){ s.remove(); };
+    }
+  }
+
+  // ---------- rendering ----------
+  async function render(){
+    // filtre artık var olmayan bir derse işaret ediyorsa sıfırla
+    if(activeSubject && activeSubject !== "__none__" && !INDEX.some(e=>e.subject === activeSubject)) activeSubject = "";
+    if(activeSubject === "__none__" && !INDEX.some(e=>!e.subject)) activeSubject = "";
+    updateCounts();
+    updateBadge();
+    if(currentView === "today") await renderToday();
+    else if(currentView === "stats") await renderStats();
+    else await renderAll();
+  }
+
+  async function buildCard(entry, stampHtml, clickInterval, extraClass){
+    const photo = await loadThumb(entry.id);
+    const card = document.createElement("div");
+    card.className = "card" + (extraClass ? " " + extraClass : "");
+    card.innerHTML =
+      '<img class="thumb" src="'+(photo||"")+'" alt="Soru fotoğrafı">'+ stampHtml +
+      '<div class="meta"><div class="note">'+escapeHtml(entry.note || (entry.subject || "Not eklenmedi"))+'</div>'+
+      '<div class="date">'+displayDate(entry.dateCaptured)+(entry.subject ? ' · '+escapeHtml(entry.subject) : '')+'</div></div>';
+    card.addEventListener("click", ()=> openView(entry.id, clickInterval));
+    return card;
+  }
+
+  async function renderToday(){
+    const dueAll = dueListToday();
+    const workedAll = workedTodayList();
+    const due = dueAll.filter(x=>matchesFilter(x.entry));
+    const worked = workedAll.filter(x=>matchesFilter(x.entry));
+    const next = nextDueInfo();
+    let html = subjectFilterHtml();
+    if(dueAll.length === 0 && workedAll.length === 0){
+      html +=
+        '<div class="empty"><div class="glyph">🌸</div><h2>Bugün için tekrar yok</h2>'+
+        '<p>Yeni bir soru eklemek için aşağıdaki + butonuna dokun'+(INDEX.length? ', ya da sıradaki tekrarı bekle.' : '.')+'</p>'+
+        (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
+        '</div>';
+      contentEl.innerHTML = html;
+      wireFilterRow();
+      return;
+    }
+    if(due.length === 0 && worked.length === 0){
+      html += '<div class="empty" style="padding:40px 24px;"><div class="glyph">📚</div><h2>Bu derste bugün tekrar yok</h2>'+
+        '<p>Başka bir ders seç ya da "Hepsi"ne dön.</p></div>';
+      contentEl.innerHTML = html;
+      wireFilterRow();
+      return;
+    }
+    if(due.length === 0){
+      html += activeSubject
+        ? '<div class="empty" style="padding:26px 24px 6px;"><div class="glyph">✓</div><h2>Bu dersin tekrarları bitti</h2></div>'
+        : '<div class="empty" style="padding:30px 24px 6px;"><div class="glyph">🎉</div><h2>Bugünlük hepsi bitti!</h2>'+
+          '<p>Bugünkü bütün tekrarları çalıştın. Harikasın 💖</p>'+
+          (next ? '<div class="next-due">Sıradaki tekrar: '+displayDate(next)+'</div>' : '')+
+          '</div>';
+    }else{
+      html += '<div class="section-label">Bugün gözden geçir — '+due.length+' kaldı</div><div class="grid" id="todayGrid"></div>';
+    }
+    if(worked.length){
+      html += '<div class="section-label">Bugün çalıştıkların ✓ — '+worked.length+'</div><div class="grid" id="workedGrid"></div>';
+    }
+    contentEl.innerHTML = html;
+    wireFilterRow();
+    const grid = document.getElementById("todayGrid");
+    if(grid){
+      for(const item of due){
+        const stamp = '<span class="stamp'+(item.overdue?" overdue":"")+'">'+intervalShort[item.interval]+(item.overdue?" · GECİKTİ":"")+'</span>';
+        grid.appendChild(await buildCard(item.entry, stamp, item.interval, ""));
+      }
+    }
+    const wgrid = document.getElementById("workedGrid");
+    if(wgrid){
+      for(const w of worked){
+        const stamp = w.failToday
+          ? '<span class="stamp overdue">YARIN YİNE 💪</span>'
+          : '<span class="stamp worked">ÇALIŞTIM ✓</span>';
+        wgrid.appendChild(await buildCard(w.entry, stamp, null, "done-today"));
+      }
+    }
+  }
+
+  async function renderAll(){
+    if(INDEX.length === 0){
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">🌷</div><h2>Henüz soru eklenmedi</h2>'+
+        '<p>Çözemediğin ilk soruyu + butonuyla ekleyerek başla.</p></div>';
+      return;
+    }
+    const learnedCount = INDEX.filter(isLearned).length;
+    const sorted = [...INDEX].sort((a,b)=> a.dateCaptured < b.dateCaptured ? 1 : -1);
+    const filtered = sorted.filter(matchesFilter);
+    if(allLimitKey !== activeSubject){ allLimit = 60; allLimitKey = activeSubject; }
+    const visible = filtered.slice(0, allLimit);
+    const label = !activeSubject ? "Tüm kayıtlar" : (activeSubject === "__none__" ? "Diğer" : activeSubject);
+    let html = subjectFilterHtml();
+    html += '<div class="section-label">'+escapeHtml(label)+' — '+filtered.length+' soru'+
+      (!activeSubject && learnedCount ? ' · '+learnedCount+' öğrenildi 🎉' : '')+'</div>';
+    if(filtered.length === 0){
+      html += '<div class="empty" style="padding:30px 24px;"><div class="glyph">📚</div><p>Bu derste kayıt yok.</p></div>';
+    }else{
+      html += '<div id="allList"></div>';
+    }
+    contentEl.innerHTML = html;
+    wireFilterRow();
+    const list = document.getElementById("allList");
+    if(list){
+      const today = todayStr();
+      for(const entry of visible){
+        const photo = await loadThumb(entry.id);
+        const row = document.createElement("div");
+        row.className = "list-item";
+        function badgeHtml(k){
+          if(entry.done[k]) return '<span class="badge done">'+intervalShort[k]+' ✓</span>';
+          if(entry.due[k] <= today) return '<span class="badge due">'+intervalShort[k]+' bugün</span>';
+          return '<span class="badge">'+intervalShort[k]+' · '+displayDate(entry.due[k])+'</span>';
+        }
+        row.innerHTML =
+          '<img class="thumb-sm" src="'+(photo||"")+'" alt="">'+
+          '<div class="info"><div class="note">'+escapeHtml(entry.note || (entry.subject || "Not eklenmedi"))+'</div>'+
+          '<div class="date">'+displayDate(entry.dateCaptured)+(entry.subject ? ' · '+escapeHtml(entry.subject) : '')+'</div>'+
+          '<div class="badges">'+badgeHtml("d1")+badgeHtml("d7")+badgeHtml("d30")+'</div></div>'+
+          '<button class="del-btn" aria-label="Sil">✕</button>';
+        row.querySelector(".info").addEventListener("click", ()=> openView(entry.id, null));
+        row.querySelector(".thumb-sm").addEventListener("click", ()=> openView(entry.id, null));
+        row.querySelector(".del-btn").addEventListener("click", (e)=>{ e.stopPropagation(); removeEntry(entry.id); });
+        list.appendChild(row);
+      }
+      if(filtered.length > visible.length){
+        const more = document.createElement("button");
+        more.className = "show-more";
+        more.textContent = "Daha fazla göster (" + (filtered.length - visible.length) + " soru daha)";
+        more.addEventListener("click", function(){ allLimit += 120; render(); });
+        list.appendChild(more);
+      }
+    }
+  }
+
+  // ---------- istatistik ----------
+  async function renderStats(){
+    const today = todayStr();
+    let totalReviews = 0, learned = 0, todayWorked = 0;
+    INDEX.forEach(function(e){
+      ["d1","d7","d30"].forEach(function(k){
+        if(e.done[k]){ totalReviews++; if(e.done[k] === today) todayWorked++; }
+      });
+      if(isLearned(e)) learned++;
+      if(e.failedOn === today) todayWorked++;
+    });
+    function sc(num, lbl, cls){
+      return '<div class="stat-card"><div class="num'+(cls?' '+cls:'')+'">'+num+'</div><div class="lbl">'+lbl+'</div></div>';
+    }
+    let html = '<div class="stat-grid">'+
+      sc(INDEX.length, "Toplam Soru") +
+      sc(learned, "Öğrenilen", "sage") +
+      sc(totalReviews, "Tamamlanan Tekrar") +
+      sc(todayWorked, "Bugün Çalışılan") +
+      '</div>';
+    const groups = {};
+    INDEX.forEach(function(e){ const s = e.subject || "Diğer"; (groups[s] = groups[s] || []).push(e); });
+    const names = Object.keys(groups).sort(function(a,b){ return groups[b].length - groups[a].length; });
+    if(names.length){
+      html += '<div class="section-label">Ders ders durum</div>';
+      names.forEach(function(s){
+        const arr = groups[s];
+        let l = 0, r = 0;
+        arr.forEach(function(e){
+          if(isLearned(e)) l++;
+          ["d1","d7","d30"].forEach(function(k){ if(e.done[k]) r++; });
+        });
+        const pct = Math.round(l * 100 / arr.length);
+        html += '<div class="subj-row"><div class="top"><span class="name">'+escapeHtml(s)+'</span>'+
+          '<span class="nums">'+arr.length+' soru · '+r+' tekrar · '+l+' öğrenildi</span></div>'+
+          '<div class="bar"><div style="width:'+pct+'%"></div></div></div>';
+      });
+    }else{
+      html += '<div class="empty" style="padding:34px 24px;"><div class="glyph">📊</div><p>Soru ekledikçe istatistikler burada birikecek.</p></div>';
+    }
+    html += '<div class="storage-line" id="storageLine"></div>';
+    contentEl.innerHTML = html;
+    renderBackupRow();
+    try{
+      if(navigator.storage && navigator.storage.estimate){
+        navigator.storage.estimate().then(function(est){
+          if(est && est.usage){
+            const mb = est.usage / (1024*1024);
+            const el = document.getElementById("storageLine");
+            if(el) el.textContent = "Depolama: ~" + (mb >= 100 ? Math.round(mb) : mb.toFixed(1)) + " MB kullanılıyor";
+          }
+        }).catch(function(){});
+      }
+    }catch(e){}
+  }
+
+  function renderBackupRow(){
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      '<div class="backup-row">'+
+      '<button class="btn btn-secondary" id="exportBtn">📦 Yedek Al</button>'+
+      '<button class="btn btn-secondary" id="importBtn">📥 Yedek Yükle</button>'+
+      '</div>'+
+      '<div class="backup-row" style="margin-top:0;">'+
+      '<button class="btn btn-secondary" id="photosExportBtn">📤 Fotoğrafları Telefona Kaydet</button>'+
+      '</div>'+
+      '<div class="backup-row" style="margin-top:0;">'+
+      '<button class="btn btn-secondary" id="orphanScanBtn">🔧 Kayıp Fotoğraf Ara</button>'+
+      '</div>'+
+      '<p class="backup-note">📦 Yedek Al: her şeyi (fotoğraflar + tekrar programı) tek dosyaya kaydeder — <b>İndirilenler/Hata Defteri</b> klasörüne yazılır; oradan Google Drive üzerine de yükleyebilirsin. Geri yükleme sadece bu dosyayla olur.<br>📤 Fotoğrafları Telefona Kaydet: bütün soru fotoğraflarını <b>Galeri</b> içine (Pictures/Hata Defteri) kaydeder. <b>Google Fotoğraflar</b> yedeklemen açıksa buluta da yüklenir — ama bu sadece görsel kopyasıdır, tekrar programını içermez. 💖</p>';
+    contentEl.appendChild(wrap);
+    document.getElementById("exportBtn").addEventListener("click", exportBackup);
+    document.getElementById("importBtn").addEventListener("click", ()=> importInput.click());
+    document.getElementById("photosExportBtn").addEventListener("click", photosExportClick);
+    document.getElementById("orphanScanBtn").addEventListener("click", function(){ checkOrphans(true); });
+    updatePhotosBtnLabel();
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ---------- view/review modal ----------
+  async function openView(id, interval){
+    const entry = INDEX.find(e=>e.id===id);
+    if(!entry) return;
+    activeEntryId = id;
+    const photo = await loadPhoto(id);
+    document.getElementById("viewPhoto").src = photo || "";
+    const metaTxt = (entry.subject || "") + (entry.note ? (entry.subject ? " — " : "") + entry.note : "");
+    document.getElementById("viewNote").textContent = metaTxt || "Not eklenmedi";
+    const today = todayStr();
+
+    // hangi tekrar işlenecek: karttan gelen, yoksa vadesi gelmiş en erken tekrar
+    let k = interval || null;
+    if(!k){
+      for(const key of ["d1","d7","d30"]){
+        if(!entry.done[key] && entry.due[key] <= today){ k = key; break; }
+      }
+    }
+    activeInterval = k;
+
+    const dueLine = document.getElementById("viewDueLine");
+    const actionsEl = document.getElementById("viewActions");
+    actionsEl.innerHTML = "";
+
+    if(k){
+      const overdue = entry.due[k] < today;
+      dueLine.innerHTML =
+        '<span class="stamp'+(overdue?" overdue":"")+'">'+intervalShort[k]+'</span>'+
+        '<span>'+intervalLabel[k]+' — önce çözmeyi dene, sonra işaretle</span>';
+      const failBtn = document.createElement("button");
+      failBtn.className = "btn btn-secondary";
+      failBtn.textContent = "Çözemedim ✗";
+      failBtn.addEventListener("click", ()=> postponeInterval(id, k));
+      const okBtn = document.createElement("button");
+      okBtn.className = "btn btn-primary";
+      okBtn.textContent = "Doğru çözdüm ✓";
+      okBtn.addEventListener("click", ()=> completeInterval(id, k));
+      actionsEl.appendChild(failBtn);
+      actionsEl.appendChild(okBtn);
+    } else if(isLearned(entry)){
+      dueLine.innerHTML = '<span class="learned-badge">ÖĞRENİLDİ ✓</span><span>Üç tekrar da tamamlandı. Bu soru artık senin! 🎉</span>';
+    } else {
+      let next = null;
+      ["d1","d7","d30"].forEach(key=>{
+        if(!entry.done[key] && (!next || entry.due[key] < entry.due[next])) next = key;
+      });
+      dueLine.innerHTML = '<span>Sıradaki tekrar: '+intervalShort[next]+' · '+displayDate(entry.due[next])+'</span>';
+    }
+    document.getElementById("viewModal").classList.remove("hidden");
+  }
+  function closeViewModal(){
+    document.getElementById("viewModal").classList.add("hidden");
+    activeEntryId = null; activeInterval = null;
+  }
+
+  async function completeInterval(id, k){
+    const entry = INDEX.find(e=>e.id===id);
+    if(!entry) return;
+    entry.done[k] = todayStr(); // tarih olarak saklanır; "bugün çalıştıkların" bölümü buna bakar
+    await saveIndex(INDEX);
+    closeViewModal();
+    if(isLearned(entry)){
+      showToast("🎉 Bu soru artık öğrenildi! Harikasın 💖");
+      burst();
+    }else{
+      showToast("Çalıştın ✓ — bugünün listesinde görünmeye devam edecek");
+    }
+    render();
+  }
+
+  async function postponeInterval(id, k){
+    const entry = INDEX.find(e=>e.id===id);
+    if(!entry) return;
+    entry.due[k] = addDays(todayStr(), 1);
+    entry.fails = (entry.fails || 0) + 1;
+    entry.failedOn = todayStr();
+    await saveIndex(INDEX);
+    closeViewModal();
+    showToast("Sorun değil — yarın tekrar karşına çıkacak 💪");
+    render();
+  }
+
+  async function removeEntry(id){
+    if(!window.confirm("Bu soru ve fotoğrafı silinsin mi?")) return;
+    INDEX = INDEX.filter(e=>e.id!==id);
+    await saveIndex(INDEX);
+    await deletePhotoKey(id);
+    showToast("Kayıt silindi");
+    closeViewModal();
+    render();
+  }
+
+  // ---------- fullscreen photo ----------
+  const lightbox = document.getElementById("lightbox");
+  const lightboxImg = document.getElementById("lightboxImg");
+  document.getElementById("viewPhoto").addEventListener("click", function(){
+    if(!this.src) return;
+    lightboxImg.src = this.src;
+    lightboxImg.classList.remove("zoomed");
+    lightbox.classList.remove("hidden");
+    document.body.classList.add("no-scroll");
+  });
+  lightboxImg.addEventListener("click", function(){
+    this.classList.toggle("zoomed");
+  });
+  document.getElementById("lightboxClose").addEventListener("click", function(){
+    lightbox.classList.add("hidden");
+    document.body.classList.remove("no-scroll");
+  });
+
+  // ---------- add flow ----------
+  const addModal = document.getElementById("addModal");
+  const captureZone = document.getElementById("captureZone");
+  const cameraInput = document.getElementById("cameraInput");
+  const galleryInput = document.getElementById("galleryInput");
+  const importInput = document.getElementById("importInput");
+  const previewWrap = document.getElementById("previewWrap");
+  const previewImg = document.getElementById("previewImg");
+  const retakeBtn = document.getElementById("retakeBtn");
+  const cropAgainBtn = document.getElementById("cropAgainBtn");
+  const saveAddBtn = document.getElementById("saveAdd");
+  const noteInput = document.getElementById("noteInput");
+
+  function openAddModal(){
+    pendingImage = null; pendingSource = null; pendingSubject = "";
+    previewWrap.classList.add("hidden");
+    retakeBtn.classList.add("hidden");
+    cropAgainBtn.classList.add("hidden");
+    captureZone.classList.remove("hidden");
+    noteInput.value = "";
+    saveAddBtn.disabled = true;
+    document.querySelectorAll("#subjectChips .chip").forEach(c=>c.classList.remove("selected"));
+    addModal.classList.remove("hidden");
+  }
+  function closeAddModal(){ addModal.classList.add("hidden"); }
+
+  function applyCropResult(result){
+    if(result === null){
+      // kırpmadan vazgeçti: elde önceki fotoğraf yoksa çekim ekranına dön
+      if(!pendingImage){
+        captureZone.classList.remove("hidden");
+        previewWrap.classList.add("hidden");
+        retakeBtn.classList.add("hidden");
+        cropAgainBtn.classList.add("hidden");
+        saveAddBtn.disabled = true;
+      }
+      return;
+    }
+    pendingImage = result;
+    previewImg.src = result;
+    previewWrap.classList.remove("hidden");
+    captureZone.classList.add("hidden");
+    retakeBtn.classList.remove("hidden");
+    cropAgainBtn.classList.remove("hidden");
+    saveAddBtn.disabled = false;
+  }
+
+  async function handlePickedFile(input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    try{
+      // kırpma için yüksek çözünürlüklü çalışma kopyası
+      const working = await compressImage(file, 2200, 0.9);
+      pendingSource = working;
+      openCropper(working, applyCropResult);
+    }catch(e){
+      showToast("Fotoğraf işlenemedi, tekrar dene");
+    }
+    input.value = "";
+  }
+
+  captureZone.addEventListener("click", ()=> cameraInput.click());
+  retakeBtn.addEventListener("click", ()=> cameraInput.click());
+  cropAgainBtn.addEventListener("click", ()=>{ if(pendingSource) openCropper(pendingSource, applyCropResult); });
+  document.getElementById("galleryBtn").addEventListener("click", ()=> galleryInput.click());
+  cameraInput.addEventListener("change", ()=> handlePickedFile(cameraInput));
+  galleryInput.addEventListener("change", ()=> handlePickedFile(galleryInput));
+
+  // ---------- fotoğraf kırpma ----------
+  const cropperEl = document.getElementById("cropper");
+  const cropImg = document.getElementById("cropImg");
+  const cropBox = document.getElementById("cropBox");
+  let cropSrc = null, cropRect = null, cropCb = null;
+  let dragMode = null, dragStart = null, rectStart = null;
+
+  function imgBox(){
+    return {left:cropImg.offsetLeft, top:cropImg.offsetTop, w:cropImg.offsetWidth, h:cropImg.offsetHeight};
+  }
+  function applyCropBox(){
+    const b = imgBox();
+    cropBox.style.left = (b.left + cropRect.x) + "px";
+    cropBox.style.top = (b.top + cropRect.y) + "px";
+    cropBox.style.width = cropRect.w + "px";
+    cropBox.style.height = cropRect.h + "px";
+  }
+  function resetCropBox(){
+    const b = imgBox();
+    cropRect = {x:0, y:0, w:b.w, h:b.h};
+    applyCropBox();
+  }
+  function openCropper(dataUrl, cb){
+    cropSrc = dataUrl; cropCb = cb;
+    cropperEl.classList.remove("hidden");
+    document.body.classList.add("no-scroll");
+    cropImg.onload = function(){ requestAnimationFrame(resetCropBox); };
+    cropImg.src = dataUrl;
+    if(cropImg.complete && cropImg.naturalWidth) requestAnimationFrame(resetCropBox);
+  }
+  function closeCropper(){
+    cropperEl.classList.add("hidden");
+    document.body.classList.remove("no-scroll");
+    dragMode = null;
+  }
+
+  cropBox.addEventListener("pointerdown", function(e){
+    if(!cropRect) return;
+    const h = e.target.closest(".crop-handle");
+    dragMode = h ? h.dataset.h : "move";
+    dragStart = {x:e.clientX, y:e.clientY};
+    rectStart = {x:cropRect.x, y:cropRect.y, w:cropRect.w, h:cropRect.h};
+    if(cropBox.setPointerCapture) cropBox.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cropBox.addEventListener("pointermove", function(e){
+    if(!dragMode) return;
+    const b = imgBox();
+    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+    const MIN = 46;
+    const r = {x:rectStart.x, y:rectStart.y, w:rectStart.w, h:rectStart.h};
+    if(dragMode === "move"){
+      r.x = Math.min(Math.max(0, rectStart.x + dx), b.w - r.w);
+      r.y = Math.min(Math.max(0, rectStart.y + dy), b.h - r.h);
+    }else{
+      if(dragMode.indexOf("w") >= 0){
+        const nx = Math.min(Math.max(0, rectStart.x + dx), rectStart.x + rectStart.w - MIN);
+        r.w = rectStart.w + (rectStart.x - nx); r.x = nx;
+      }
+      if(dragMode.indexOf("e") >= 0){
+        r.w = Math.min(Math.max(MIN, rectStart.w + dx), b.w - rectStart.x);
+      }
+      if(dragMode.indexOf("n") >= 0){
+        const ny = Math.min(Math.max(0, rectStart.y + dy), rectStart.y + rectStart.h - MIN);
+        r.h = rectStart.h + (rectStart.y - ny); r.y = ny;
+      }
+      if(dragMode.indexOf("s") >= 0){
+        r.h = Math.min(Math.max(MIN, rectStart.h + dy), b.h - rectStart.y);
+      }
+    }
+    cropRect = r; applyCropBox();
+  });
+  function endCropDrag(){ dragMode = null; }
+  cropBox.addEventListener("pointerup", endCropDrag);
+  cropBox.addEventListener("pointercancel", endCropDrag);
+  window.addEventListener("resize", function(){
+    if(!cropperEl.classList.contains("hidden") && cropImg.naturalWidth) resetCropBox();
+  });
+
+  document.getElementById("cropRotate").addEventListener("click", function(){
+    if(!cropSrc) return;
+    const img = new Image();
+    img.onload = function(){
+      const c = document.createElement("canvas");
+      c.width = img.height; c.height = img.width;
+      const ctx = c.getContext("2d");
+      ctx.translate(c.width, 0);
+      ctx.rotate(Math.PI/2);
+      ctx.drawImage(img, 0, 0);
+      cropSrc = c.toDataURL("image/jpeg", 0.9);
+      cropImg.onload = function(){ requestAnimationFrame(resetCropBox); };
+      cropImg.src = cropSrc;
+    };
+    img.src = cropSrc;
+  });
+
+  document.getElementById("cropCancel").addEventListener("click", function(){
+    closeCropper();
+    if(cropCb) cropCb(null);
+  });
+
+  document.getElementById("cropUse").addEventListener("click", function(){
+    if(!cropSrc || !cropRect) return;
+    const img = new Image();
+    img.onload = function(){
+      const b = imgBox();
+      const scale = img.width / b.w;
+      const sx = Math.max(0, cropRect.x * scale);
+      const sy = Math.max(0, cropRect.y * scale);
+      const sw = Math.min(img.width - sx, cropRect.w * scale);
+      const sh = Math.min(img.height - sy, cropRect.h * scale);
+      if(sw < 10 || sh < 10){ closeCropper(); if(cropCb) cropCb(null); return; }
+      const k = Math.min(1, 1500 / Math.max(sw, sh));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(sw * k));
+      c.height = Math.max(1, Math.round(sh * k));
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      const result = c.toDataURL("image/jpeg", 0.76);
+      pendingSource = cropSrc; // döndürülmüşse "yeniden kırp" da döndürülmüş halden açılsın
+      closeCropper();
+      if(cropCb) cropCb(result);
+    };
+    img.src = cropSrc;
+  });
+
+  // ---------- hızlı seri çekim ----------
+  const qcamEl = document.getElementById("qcam");
+  const qcamVideo = document.getElementById("qcamVideo");
+  const qcamFrame = document.getElementById("qcamFrame");
+  const qcamCount = document.getElementById("qcamCount");
+  const qcamUndoBtn = document.getElementById("qcamUndo");
+  const QSUBJECTS = ["Matematik","Fizik","Kimya","Biyoloji","Türkçe","Sosyal"];
+  let qcamStream = null, qcamSubject = "", qcamAdded = [];
+
+  (function buildQcamChips(){
+    const wrap = document.getElementById("qcamSubjects");
+    QSUBJECTS.forEach(function(s){
+      const b = document.createElement("button");
+      b.className = "chip"; b.textContent = s;
+      b.addEventListener("click", function(){
+        qcamSubject = s;
+        wrap.querySelectorAll(".chip").forEach(c=>c.classList.remove("selected"));
+        b.classList.add("selected");
+        updateQcamReady();
+      });
+      wrap.appendChild(b);
+    });
+  })();
+
+  // ders seçilmeden çekime izin verme
+  function updateQcamReady(){
+    const tip = document.getElementById("qcamTip");
+    const sh = document.getElementById("qcamShutter");
+    if(!qcamSubject){
+      if(tip) tip.textContent = "👆 Önce üstten ders seç — sonra soruyu çerçeveye alıp çek";
+      if(sh) sh.classList.add("dim");
+    }else{
+      if(tip) tip.textContent = "Ders: " + qcamSubject + " · Soruyu çerçeveye sığdır ve çek — her çekim otomatik eklenir";
+      if(sh) sh.classList.remove("dim");
+    }
+  }
+
+  function applyFrameSize(){
+    const w = Math.round(window.innerWidth * 0.94);
+    let h = 0;
+    try{ h = parseFloat(localStorage.getItem("hd_qcamFrameH")) || 0; }catch(e){}
+    if(!h || h < 90) h = Math.round(w * 9 / 16);
+    h = Math.min(h, Math.round(window.innerHeight * 0.6));
+    qcamFrame.style.width = w + "px";
+    qcamFrame.style.left = Math.round((window.innerWidth - w) / 2) + "px";
+    qcamFrame.style.height = h + "px";
+  }
+
+  async function openQcam(){
+    qcamAdded = [];
+    updateQcamCount();
+    qcamUndoBtn.classList.add("hidden");
+    document.getElementById("qcamError").classList.add("hidden");
+    // her açılışta ders bilinçli olarak yeniden seçilsin
+    qcamSubject = "";
+    document.getElementById("qcamSubjects").querySelectorAll(".chip").forEach(function(c){ c.classList.remove("selected"); });
+    updateQcamReady();
+    qcamEl.classList.remove("hidden");
+    document.body.classList.add("no-scroll");
+    applyFrameSize();
+    try{
+      qcamStream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:"environment", width:{ideal:3840}, height:{ideal:2160} },
+        audio:false
+      });
+      qcamVideo.srcObject = qcamStream;
+      const p = qcamVideo.play(); if(p && p.catch) p.catch(function(){});
+    }catch(e){
+      const err = document.getElementById("qcamError");
+      err.innerHTML = '<div style="font-size:2.2rem;">📷</div>'+
+        '<b>Kameraya erişilemedi</b>'+
+        '<span>Kamera izni gerekiyor: Ayarlar → Uygulamalar → Hata Defteri → İzinler → Kamera. İstersen ✕ ile kapatıp normal "Fotoğraf çek" yolunu kullan.</span>';
+      err.classList.remove("hidden");
+    }
+  }
+
+  function closeQcam(){
+    if(qcamStream){ qcamStream.getTracks().forEach(function(t){ t.stop(); }); qcamStream = null; }
+    qcamVideo.srcObject = null;
+    qcamEl.classList.add("hidden");
+    document.body.classList.remove("no-scroll");
+    if(qcamAdded.length){
+      showToast(qcamAdded.length + " soru eklendi 🎉 İlk tekrarları yarın");
+      currentView = "all";
+      document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.view==="all"));
+      render();
+    }
+  }
+
+  function updateQcamCount(){
+    qcamCount.textContent = qcamAdded.length ? (qcamAdded.length + " eklendi") : "";
+  }
+
+  function qcamFlash(){
+    const f = document.getElementById("qcamFlash");
+    f.classList.add("on");
+    setTimeout(function(){ f.classList.remove("on"); }, 130);
+  }
+
+  async function addQuickEntry(dataUrl){
+    const id = "e" + Date.now() + Math.floor(Math.random()*1000);
+    const today = todayStr();
+    const entry = {
+      id: id, dateCaptured: today, subject: qcamSubject, note: "",
+      due: { d1: addDays(today,1), d7: addDays(today,7), d30: addDays(today,30) },
+      done: { d1:false, d7:false, d30:false }
+    };
+    const photoOk = await savePhoto(id, dataUrl);
+    if(photoOk) await saveThumbFor(id, dataUrl);
+    INDEX.push(entry);
+    const idxOk = await saveIndex(INDEX);
+    if(photoOk && idxOk){
+      qcamAdded.push(id);
+      updateQcamCount();
+      qcamUndoBtn.classList.remove("hidden");
+    }else{
+      INDEX = INDEX.filter(e=>e.id!==id);
+      await deletePhotoKey(id);
+      showToast("Kaydedilemedi, tekrar dene");
+    }
+  }
+
+  document.getElementById("qcamShutter").addEventListener("click", function(){
+    if(!qcamStream) return;
+    if(!qcamSubject){
+      showToast("Önce üstten ders seç 👆");
+      const w = document.getElementById("qcamSubjects");
+      w.classList.remove("attn"); void w.offsetWidth; w.classList.add("attn");
+      return;
+    }
+    const vw = qcamVideo.videoWidth, vh = qcamVideo.videoHeight;
+    if(!vw || !vh) return;
+    // ekrandaki çerçeveyi, cover ile ölçeklenmiş video karesindeki bölgeye çevir
+    const vr = qcamVideo.getBoundingClientRect();
+    const fr = qcamFrame.getBoundingClientRect();
+    const scale = Math.max(vr.width / vw, vr.height / vh);
+    const offX = (vw * scale - vr.width) / 2, offY = (vh * scale - vr.height) / 2;
+    let sx = (fr.left - vr.left + offX) / scale;
+    let sy = (fr.top - vr.top + offY) / scale;
+    let sw = fr.width / scale, sh = fr.height / scale;
+    sx = Math.max(0, sx); sy = Math.max(0, sy);
+    sw = Math.min(sw, vw - sx); sh = Math.min(sh, vh - sy);
+    if(sw < 10 || sh < 10) return;
+    const k = Math.min(1, 1500 / Math.max(sw, sh));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(sw * k));
+    c.height = Math.max(1, Math.round(sh * k));
+    c.getContext("2d").drawImage(qcamVideo, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    qcamFlash();
+    addQuickEntry(c.toDataURL("image/jpeg", 0.8));
+  });
+
+  qcamUndoBtn.addEventListener("click", async function(){
+    const id = qcamAdded.pop();
+    if(!id) return;
+    INDEX = INDEX.filter(e=>e.id!==id);
+    await saveIndex(INDEX);
+    await deletePhotoKey(id);
+    updateQcamCount();
+    if(!qcamAdded.length) qcamUndoBtn.classList.add("hidden");
+    showToast("Son çekim silindi");
+  });
+
+  document.getElementById("qcamClose").addEventListener("click", closeQcam);
+  document.getElementById("quickBtn").addEventListener("click", function(){
+    closeAddModal();
+    openQcam();
+  });
+
+  const qcamHandle = document.getElementById("qcamHandle");
+  let qhDrag = false;
+  qcamHandle.addEventListener("pointerdown", function(e){
+    qhDrag = true;
+    if(qcamHandle.setPointerCapture) qcamHandle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  qcamHandle.addEventListener("pointermove", function(e){
+    if(!qhDrag) return;
+    // çerçeve dikeyde ortalı: alt kenar parmağı izlesin diye yükseklik 2× delta
+    const centerY = window.innerHeight / 2;
+    let h = Math.round((e.clientY - centerY) * 2);
+    h = Math.max(90, Math.min(h, Math.round(window.innerHeight * 0.6)));
+    qcamFrame.style.height = h + "px";
+  });
+  function endQhDrag(){
+    if(qhDrag){
+      try{ localStorage.setItem("hd_qcamFrameH", String(qcamFrame.offsetHeight)); }catch(e){}
+    }
+    qhDrag = false;
+  }
+  qcamHandle.addEventListener("pointerup", endQhDrag);
+  qcamHandle.addEventListener("pointercancel", endQhDrag);
+
+  window.addEventListener("resize", function(){
+    if(!qcamEl.classList.contains("hidden")) applyFrameSize();
+  });
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden && qcamStream) closeQcam();
+  });
+
+  document.getElementById("subjectChips").addEventListener("click", function(e){
+    const chip = e.target.closest(".chip");
+    if(!chip) return;
+    if(pendingSubject === chip.dataset.subj){
+      pendingSubject = "";
+      chip.classList.remove("selected");
+      return;
+    }
+    document.querySelectorAll("#subjectChips .chip").forEach(c=>c.classList.remove("selected"));
+    chip.classList.add("selected");
+    pendingSubject = chip.dataset.subj;
+  });
+
+  document.getElementById("cancelAdd").addEventListener("click", closeAddModal);
+
+  saveAddBtn.addEventListener("click", async function(){
+    if(!pendingImage) return;
+    saveAddBtn.disabled = true;
+    saveAddBtn.textContent = "Kaydediliyor...";
+    const id = "e" + Date.now() + Math.floor(Math.random()*1000);
+    const today = todayStr();
+    const entry = {
+      id: id,
+      dateCaptured: today,
+      subject: pendingSubject,
+      note: noteInput.value.trim(),
+      due: { d1: addDays(today,1), d7: addDays(today,7), d30: addDays(today,30) },
+      done: { d1:false, d7:false, d30:false }
+    };
+    const photoOk = await savePhoto(id, pendingImage);
+    if(photoOk) await saveThumbFor(id, pendingImage);
+    INDEX.push(entry);
+    const idxOk = await saveIndex(INDEX);
+    saveAddBtn.textContent = "Kaydet";
+    if(photoOk && idxOk){
+      showToast("Kaydedildi — ilk tekrar " + displayDate(entry.due.d1));
+      closeAddModal();
+      currentView = "today";
+      document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.view==="today"));
+      render();
+    }else{
+      INDEX = INDEX.filter(e2=>e2.id!==id);
+      await deletePhotoKey(id);
+      showToast("Kaydedilemedi, tekrar dene");
+      saveAddBtn.disabled = false;
+    }
+  });
+
+  // ---------- backup / restore ----------
+  async function exportBackup(){
+    try{
+      // JSON'u tek dev metin yerine parça parça kur: yüzlerce fotoğrafta bellek şişmesin
+      const parts = [
+        '{"app":"hata-defteri","version":1,"exportedAt":' + JSON.stringify(new Date().toISOString()) +
+        ',"index":' + JSON.stringify(INDEX) + ',"photos":{'
+      ];
+      let first = true;
+      for(const e of INDEX){
+        const p = await loadPhoto(e.id);
+        if(!p) continue;
+        parts.push((first ? "" : ",") + JSON.stringify(e.id) + ":" + JSON.stringify(p));
+        first = false;
+      }
+      parts.push("}}");
+      if(window.HataBridge){
+        if(!HataBridge.openFile("hata-defteri-yedek-" + todayStr() + ".json")) throw new Error("open");
+        let okW = true;
+        for(const part of parts){
+          for(let i = 0; i < part.length && okW; i += 262144){
+            okW = HataBridge.writeChunk(part.slice(i, i + 262144));
+          }
+          if(!okW) break;
+        }
+        if(!HataBridge.closeFile() || !okW) throw new Error("write");
+        showToast("Yedek kaydedildi: İndirilenler/Hata Defteri 📦");
+        return;
+      }
+      const blob = new Blob(parts, {type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "hata-defteri-yedek-" + todayStr() + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=> URL.revokeObjectURL(a.href), 5000);
+      showToast("Yedek hazır — Dosyalar'a kaydet 📦");
+    }catch(e){
+      showToast("Yedek alınamadı");
+    }
+  }
+
+  async function importBackup(file){
+    try{
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if(!data || !Array.isArray(data.index)) throw new Error("bad");
+      let count = 0;
+      for(const entry of data.index){
+        if(!entry || !entry.id || !entry.due || !entry.done) continue;
+        const existing = INDEX.find(e=>e.id===entry.id);
+        if(existing) Object.assign(existing, entry);
+        else INDEX.push(entry);
+        const p = data.photos && data.photos[entry.id];
+        if(p) await savePhoto(entry.id, p);
+        count++;
+      }
+      migrateSubjects(); // eski formattan gelen yedeklerde ders alanını tamamla
+      await saveIndex(INDEX);
+      showToast(count + " kayıt geri yüklendi ✓");
+      render();
+    }catch(e){
+      showToast("Yedek dosyası okunamadı");
+    }
+  }
+  importInput.addEventListener("change", function(){
+    const f = importInput.files && importInput.files[0];
+    if(f) importBackup(f);
+    importInput.value = "";
+  });
+
+  // ---------- fotoğrafları toplu olarak Fotoğraflar uygulamasına aktar ----------
+  const PHOTO_BATCH = 30;
+  let photoExportPos = 0;
+  try{ photoExportPos = parseInt(localStorage.getItem("hd_photoExportPos"), 10) || 0; }catch(e){}
+  let preparedFiles = null, preparedCount = 0;
+
+  function setPhotoExportPos(v){
+    photoExportPos = v;
+    try{ localStorage.setItem("hd_photoExportPos", String(v)); }catch(e){}
+  }
+  function dataUrlToBlob(dataUrl){
+    const i = dataUrl.indexOf(",");
+    const meta = dataUrl.slice(0, i);
+    const b64 = dataUrl.slice(i + 1);
+    const mime = (meta.match(/data:([^;]+)/) || [])[1] || "image/jpeg";
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for(let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+    return new Blob([arr], {type: mime});
+  }
+  function updatePhotosBtnLabel(){
+    const btn = document.getElementById("photosExportBtn");
+    if(!btn) return;
+    const left = INDEX.length - photoExportPos;
+    if(preparedFiles) btn.textContent = "📤 Kaydet — " + preparedFiles.length + " fotoğraf hazır";
+    else if(photoExportPos > 0 && left > 0) btn.textContent = "📤 Devam et — kalan " + left + " fotoğraf";
+    else btn.textContent = "📤 Fotoğrafları Telefona Kaydet";
+    btn.disabled = INDEX.length === 0;
+  }
+  async function photosExportClick(){
+    const btn = document.getElementById("photosExportBtn");
+    if(window.HataBridge){
+      if(btn){ btn.disabled = true; btn.textContent = "Kaydediliyor..."; }
+      let n = 0;
+      for(const e of INDEX){
+        const p = await loadPhoto(e.id);
+        if(!p) continue;
+        const b64 = p.slice(p.indexOf(",") + 1);
+        const name = "hata-" + (e.subject || "soru") + "-" + e.dateCaptured + "-" + e.id.slice(-4) + ".jpg";
+        if(HataBridge.saveImage(name, b64)) n++;
+      }
+      if(btn) btn.disabled = false;
+      updatePhotosBtnLabel();
+      showToast(n + " fotoğraf Galeri (Pictures/Hata Defteri) içine kaydedildi 📤");
+      return;
+    }
+    if(!(navigator.share && navigator.canShare && typeof File === "function")){
+      showToast("Bu iOS sürümü toplu paylaşımı desteklemiyor");
+      return;
+    }
+    if(photoExportPos >= INDEX.length) setPhotoExportPos(0);
+    // hazırda bekleyen grup varsa doğrudan paylaş (kullanıcı dokunuşuyla)
+    if(preparedFiles){
+      try{
+        await navigator.share({files: preparedFiles});
+        setPhotoExportPos(photoExportPos + preparedCount);
+        preparedFiles = null; preparedCount = 0;
+        showToast(photoExportPos >= INDEX.length ? "Hepsi aktarıldı 🎉" : "Kaydedildi — kalanlar için tekrar bas");
+        if(photoExportPos >= INDEX.length) setPhotoExportPos(0);
+      }catch(err){ /* vazgeçti: grup hazır kalsın */ }
+      updatePhotosBtnLabel();
+      return;
+    }
+    // grubu hazırla
+    if(btn){ btn.disabled = true; btn.textContent = "Hazırlanıyor..."; }
+    const entries = INDEX.slice(photoExportPos, photoExportPos + PHOTO_BATCH);
+    const files = [];
+    for(const e of entries){
+      const p = await loadPhoto(e.id);
+      if(!p) continue;
+      const name = "hata-" + (e.subject || "soru") + "-" + e.dateCaptured + "-" + e.id.slice(-4) + ".jpg";
+      files.push(new File([dataUrlToBlob(p)], name, {type: "image/jpeg"}));
+    }
+    if(btn) btn.disabled = false;
+    if(!files.length){
+      setPhotoExportPos(photoExportPos + entries.length);
+      updatePhotosBtnLabel();
+      return;
+    }
+    if(!navigator.canShare({files: files})){
+      showToast("Bu cihaz dosya paylaşımını desteklemiyor");
+      updatePhotosBtnLabel();
+      return;
+    }
+    preparedFiles = files; preparedCount = entries.length;
+    try{
+      await navigator.share({files: files});
+      setPhotoExportPos(photoExportPos + preparedCount);
+      preparedFiles = null; preparedCount = 0;
+      showToast(photoExportPos >= INDEX.length ? "Hepsi aktarıldı 🎉" : "Kaydedildi — kalanlar için tekrar bas");
+      if(photoExportPos >= INDEX.length) setPhotoExportPos(0);
+    }catch(err){
+      // iOS bazen hazırlık uzun sürünce dokunuş saymaz; grup hazır, ikinci dokunuş anında paylaşır
+      if(!(err && err.name === "AbortError")) showToast("Tekrar bas — fotoğraflar hazır");
+    }
+    updatePhotosBtnLabel();
+  }
+
+  // ---------- misc wiring ----------
+  document.getElementById("fabAdd").addEventListener("click", openAddModal);
+  document.getElementById("closeView").addEventListener("click", closeViewModal);
+  document.getElementById("deleteEntry").addEventListener("click", function(){
+    if(activeEntryId) removeEntry(activeEntryId);
+  });
+
+  document.querySelectorAll(".tab").forEach(tab=>{
+    tab.addEventListener("click", function(){
+      document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+      tab.classList.add("active");
+      currentView = tab.dataset.view;
+      render();
+    });
+  });
+
+  // gün değişince (uygulama açık kalmışsa) listeyi tazele
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden && db) render();
+  });
+
+  // ---------- install hint (Safari'de açıldıysa göster) ----------
+  function setupInstallHint(){
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const standalone = (navigator.standalone === true) ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    let dismissed = false;
+    try{ dismissed = localStorage.getItem("hd_installHintDismissed") === "1"; }catch(e){}
+    if(isIOS && !standalone && !dismissed){
+      document.getElementById("installHint").classList.remove("hidden");
+    }
+    document.getElementById("dismissHint").addEventListener("click", function(){
+      document.getElementById("installHint").classList.add("hidden");
+      try{ localStorage.setItem("hd_installHintDismissed", "1"); }catch(e){}
+    });
+  }
+
+  // ---------- init ----------
+  (async function init(){
+    try{
+      await openDB();
+    }catch(e){
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">⚠️</div><h2>Depolama açılamadı</h2>'+
+        '<p>Safari gizli sekmede olabilirsin. Normal sekmede ya da ana ekrana eklenmiş uygulamadan aç.</p></div>';
+      return;
+    }
+    try{
+      if(navigator.storage && navigator.storage.persist){
+        navigator.storage.persist().catch(function(){});
+      }
+    }catch(e){}
+    try{
+      INDEX = await loadIndex();
+    }catch(e){
+      indexBroken = true;
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">⚠️</div><h2>Kayıt listesi okunamadı</h2>'+
+        '<p>Kayıtların korunması için yeni ekleme geçici olarak kapatıldı. Uygulamayı tamamen kapatıp yeniden açmayı dene.</p></div>';
+      return;
+    }
+    // liste boş ama güvenlik yedeği doluysa (kayıt dosyası kaybolmuş demektir) yedekten dön;
+    // silinen soruları geri getirmemek için sadece fotoğrafı hâlâ duran kayıtlar alınır
+    if(INDEX.length === 0){
+      try{
+        const bak = await kvGet("hata_index_backup");
+        if(Array.isArray(bak) && bak.length){
+          const alive = [];
+          for(const e of bak){
+            if(e && e.id && await loadPhoto(e.id)) alive.push(e);
+          }
+          if(alive.length){
+            INDEX = alive;
+            await saveIndex(INDEX);
+            showToast(alive.length + " kayıt güvenlik yedeğinden geri yüklendi");
+          }
+        }
+      }catch(e){}
+    }
+    if(migrateSubjects()) await saveIndex(INDEX);
+    if(INDEX.length){ try{ await kvSet("hata_index_backup", INDEX); }catch(e){} }
+    render();
+    checkOrphans(false);
+    setupInstallHint();
+    // Android: sayfa uygulamanın içinden yüklenir, service worker gerekmez
+  })();
+})();
+</script>
+</body>
+</html>
