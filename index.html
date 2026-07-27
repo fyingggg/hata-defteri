@@ -541,11 +541,23 @@
     });
   }
 
+  function kvKeys(){
+    return new Promise((resolve, reject)=>{
+      const r = db.transaction("kv").objectStore("kv").getAllKeys();
+      r.onsuccess = ()=> resolve(r.result || []);
+      r.onerror = ()=> reject(r.error);
+    });
+  }
+
+  // okuma hatası "boş liste" sanılırsa sonraki kayıt eski verilerin üzerine yazar;
+  // o yüzden hata yutulmaz, init yakalar ve yazma kilitlenir
+  let indexBroken = false;
   async function loadIndex(){
-    try{ const v = await kvGet("hata_index"); return Array.isArray(v) ? v : []; }
-    catch(e){ return []; }
+    const v = await kvGet("hata_index");
+    return Array.isArray(v) ? v : [];
   }
   async function saveIndex(list){
+    if(indexBroken) return false;
     try{ await kvSet("hata_index", list); return true; }
     catch(e){ return false; }
   }
@@ -560,6 +572,68 @@
   async function deletePhotoKey(id){
     await kvDel("hata_photo_" + id);
     await kvDel("hata_thumb_" + id);
+  }
+
+  // ---------- kayıp kayıt kurtarma ----------
+  // id "e" + Date.now() + rastgele ek olarak üretiliyor; çekim tarihi buradan geri çıkarılır
+  function dateFromId(id){
+    const m = /^e(\d{13})/.exec(String(id));
+    if(!m) return null;
+    const d = new Date(parseInt(m[1],10));
+    if(isNaN(d.getTime())) return null;
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  async function findOrphanPhotoIds(){
+    const keys = await kvKeys();
+    const have = {};
+    INDEX.forEach(function(e){ have[e.id] = true; });
+    const ids = [];
+    keys.forEach(function(k){
+      if(typeof k === "string" && k.indexOf("hata_photo_") === 0){
+        const id = k.slice("hata_photo_".length);
+        if(!have[id]) ids.push(id);
+      }
+    });
+    return ids;
+  }
+  async function recoverOrphans(ids){
+    for(const id of ids){
+      const dcap = dateFromId(id) || todayStr();
+      INDEX.push({
+        id: id, dateCaptured: dcap, subject: "", note: "",
+        due: { d1: addDays(dcap,1), d7: addDays(dcap,7), d30: addDays(dcap,30) },
+        done: { d1:false, d7:false, d30:false }
+      });
+    }
+    await saveIndex(INDEX);
+    return ids.length;
+  }
+  function ignoredOrphans(){
+    try{ return JSON.parse(localStorage.getItem("hd_orphanIgnored")) || []; }catch(e){ return []; }
+  }
+  async function checkOrphans(manual){
+    let ids = [];
+    try{ ids = await findOrphanPhotoIds(); }catch(e){ return; }
+    if(!manual){
+      const ign = ignoredOrphans();
+      ids = ids.filter(function(id){ return ign.indexOf(id) < 0; });
+    }
+    if(!ids.length){
+      if(manual) showToast("Kayıp fotoğraf yok ✓");
+      return;
+    }
+    const ok = window.confirm(ids.length + " adet, listede görünmeyen soru fotoğrafı bulundu. Soru olarak geri eklensin mi?\n\n(Ders/not bilgisi ve işaretlenen tekrarlar geri gelmez; tekrar takvimi çekim tarihine göre yeniden kurulur.)");
+    if(ok){
+      const n = await recoverOrphans(ids);
+      showToast(n + " soru geri getirildi 🎉");
+      render();
+    }else{
+      try{
+        const ign = ignoredOrphans();
+        ids.forEach(function(id){ if(ign.indexOf(id) < 0) ign.push(id); });
+        localStorage.setItem("hd_orphanIgnored", JSON.stringify(ign));
+      }catch(e){}
+    }
   }
 
   // ---------- küçük önizlemeler (listeler tam boy fotoğrafla boğulmasın) ----------
@@ -972,12 +1046,16 @@
       '<div class="backup-row" style="margin-top:0;">'+
       '<button class="btn btn-secondary" id="photosExportBtn">📤 Fotoğrafları Telefona Kaydet</button>'+
       '</div>'+
+      '<div class="backup-row" style="margin-top:0;">'+
+      '<button class="btn btn-secondary" id="orphanScanBtn">🔧 Kayıp Fotoğraf Ara</button>'+
+      '</div>'+
       '<p class="backup-note">📦 Yedek Al: her şeyi (fotoğraflar + tekrar programı) tek dosyaya indirir — Dosyalar, iCloud ya da <b>Google Drive</b>\'a kaydet. Geri yükleme sadece bu dosyayla olur.<br>'+
       '📤 Fotoğrafları Telefona Kaydet: soru fotoğraflarını 30\'arlı gruplarla Fotoğraflar\'a kaydeder (açılan ekranda <b>"Görüntüleri Kaydet"</b> seç). <b>Google Fotoğraflar</b> yedeklemen açıksa oradan buluta da yüklenir — ama bu sadece görsel kopyasıdır, tekrar programını içermez. 💛</p>';
     contentEl.appendChild(wrap);
     document.getElementById("exportBtn").addEventListener("click", exportBackup);
     document.getElementById("importBtn").addEventListener("click", ()=> importInput.click());
     document.getElementById("photosExportBtn").addEventListener("click", photosExportClick);
+    document.getElementById("orphanScanBtn").addEventListener("click", function(){ checkOrphans(true); });
     updatePhotosBtnLabel();
   }
 
@@ -1731,9 +1809,37 @@
         navigator.storage.persist().catch(function(){});
       }
     }catch(e){}
-    INDEX = await loadIndex();
+    try{
+      INDEX = await loadIndex();
+    }catch(e){
+      indexBroken = true;
+      contentEl.innerHTML =
+        '<div class="empty"><div class="glyph">⚠️</div><h2>Kayıt listesi okunamadı</h2>'+
+        '<p>Kayıtların korunması için yeni ekleme geçici olarak kapatıldı. Uygulamayı tamamen kapatıp yeniden açmayı dene.</p></div>';
+      return;
+    }
+    // liste boş ama güvenlik yedeği doluysa (kayıt dosyası kaybolmuş demektir) yedekten dön;
+    // silinen soruları geri getirmemek için sadece fotoğrafı hâlâ duran kayıtlar alınır
+    if(INDEX.length === 0){
+      try{
+        const bak = await kvGet("hata_index_backup");
+        if(Array.isArray(bak) && bak.length){
+          const alive = [];
+          for(const e of bak){
+            if(e && e.id && await loadPhoto(e.id)) alive.push(e);
+          }
+          if(alive.length){
+            INDEX = alive;
+            await saveIndex(INDEX);
+            showToast(alive.length + " kayıt güvenlik yedeğinden geri yüklendi");
+          }
+        }
+      }catch(e){}
+    }
     if(migrateSubjects()) await saveIndex(INDEX);
+    if(INDEX.length){ try{ await kvSet("hata_index_backup", INDEX); }catch(e){} }
     render();
+    checkOrphans(false);
     setupInstallHint();
     if("serviceWorker" in navigator && location.protocol.indexOf("http") === 0){
       navigator.serviceWorker.register("./sw.js").catch(function(){});
